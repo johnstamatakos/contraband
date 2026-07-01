@@ -1,4 +1,5 @@
 import type { GameState, WeatherEvent, WeatherType } from './gameState'
+import { CONFIG } from './config'
 
 const WEATHER_TYPES: WeatherType[] = [
   'thunderstorm', 'hurricane', 'typhoon', 'port_fog', 'blizzard', 'monsoon',
@@ -7,18 +8,19 @@ const WEATHER_TYPES: WeatherType[] = [
 let weatherSeq = 1
 
 /**
- * 12% chance each turn to generate a new weather forecast event.
- * Caps at 2 total active events (forecast + active combined).
- * The returned event has isForecast=true — it activates next turn after stepEndTurn.
+ * Maybe generates a new weather forecast event each weekly tick.
+ * Spawn rate and caps are controlled by CONFIG.weather.
+ * The returned event has isForecast=true — it activates next turn via stepEndTurn.
  */
 export function maybeGenerateWeather(state: GameState): WeatherEvent | null {
-  if (state.weatherEvents.length >= 2 || Math.random() > 0.12) return null
+  const w = CONFIG.weather
+  if (state.weatherEvents.length >= w.maxConcurrentEvents || Math.random() > w.spawnChancePerWeek) return null
 
   const openRoutes = state.routes.filter(r => r.status === 'open')
   if (openRoutes.length === 0) return null
 
   const shuffled = [...openRoutes].sort(() => Math.random() - 0.5)
-  const count = Math.random() < 0.4 ? 2 : 1
+  const count = Math.random() < w.multiRouteChance ? 2 : 1
   const affected = shuffled.slice(0, count)
 
   return {

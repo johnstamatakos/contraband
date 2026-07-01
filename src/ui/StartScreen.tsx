@@ -45,7 +45,7 @@ export function StartScreen() {
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
             <div className="text-red-400 font-bold uppercase tracking-widest text-xs">Heat</div>
-            <div className="text-gray-400">Repeated illicit runs raise route heat. The investigator appears at week 8.</div>
+            <div className="text-gray-400">Route heat rises with illicit runs. The Inspector (domestic) arrives week 4 — Interpol (international) at week 12.</div>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
             <div className="text-emerald-400 font-bold uppercase tracking-widest text-xs">Win</div>

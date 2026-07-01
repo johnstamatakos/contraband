@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { useGameStore, setCurrentGameTimeMs } from '../store/gameStore'
 import { WEEK_MS, DAY_MS } from '../engine/constants'
+import { CONFIG } from '../engine/config'
 
 /**
  * Real-time game clock.
@@ -42,9 +43,15 @@ export function useGameClock() {
         .filter(e => !e.isForecast)
         .flatMap(e => e.affectedRouteIds),
     )
+    const skillSpeedMult = gameState.unlockedSkills.includes('logistics_2')
+      ? CONFIG.skills.effects.logistics_2.transitTimeMultiplier
+      : 1.0
+    const eu = CONFIG.vehicleUpgrades.effects.engine
     for (const s of gameState.shipmentsInTransit) {
       if (frozenRouteIds.has(s.routeId)) continue  // held up by active weather
-      const arrivalTime = s.departureTimeMs + s.totalTurns * DAY_MS + s.frozenDurationMs
+      const engineTier = gameState.fleet.find(v => v.id === s.vehicleId)?.upgrades.engine ?? 0
+      const engineMult = engineTier === 2 ? eu.tier2TransitMultiplier : engineTier === 1 ? eu.tier1TransitMultiplier : 1.0
+      const arrivalTime = s.departureTimeMs + s.totalTurns * DAY_MS * skillSpeedMult * engineMult + s.frozenDurationMs
       if (now >= arrivalTime) {
         resolveArrival(s.id, now)
       }
@@ -55,7 +62,7 @@ export function useGameClock() {
     const { gameState, clearWeatherEvent } = useGameStore.getState()
     for (const e of gameState.weatherEvents) {
       if (!e.isForecast && e.clearAtMs !== null && now >= e.clearAtMs) {
-        clearWeatherEvent(e.id)
+        clearWeatherEvent(e.id, now)
       }
     }
   }, [])
@@ -92,8 +99,11 @@ export function useGameClock() {
       if (!isPaused && !reportOpen && !gameOver && hasStarted) {
         const delta = lastRafTimeRef.current !== null ? now - lastRafTimeRef.current : 0
         // Cap delta to 200ms to prevent huge jumps after tab switching
-        const clampedDelta = Math.min(delta, 200)
+        const clampedDelta = Math.min(delta, 200) * useGameStore.getState().gameSpeed
         gameTimeMsRef.current += clampedDelta
+        // Keep currentGameTimeMs in sync every frame so store actions (e.g. establishRoute)
+        // always read an accurate value when computing openAtMs deadlines.
+        setCurrentGameTimeMs(gameTimeMsRef.current)
         checkArrivals(gameTimeMsRef.current)
         checkWeeklyBoundary(gameTimeMsRef.current)
         checkRouteOpenings(gameTimeMsRef.current)

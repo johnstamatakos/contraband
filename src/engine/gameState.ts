@@ -1,3 +1,5 @@
+import { CONFIG } from './config'
+
 // ─── Core ID types ───────────────────────────────────────────────────────────
 
 export type CityId = string
@@ -48,6 +50,14 @@ export interface City {
   y?: number
 }
 
+export interface VehicleUpgrades {
+  cargo: 0 | 1 | 2
+  engine: 0 | 1 | 2
+  concealment: 0 | 1 | 2
+}
+
+export const DEFAULT_UPGRADES: VehicleUpgrades = { cargo: 0, engine: 0, concealment: 0 }
+
 export interface Vehicle {
   id: VehicleId
   type: VehicleType
@@ -61,36 +71,15 @@ export interface Vehicle {
   resaleValue: number
   isAssigned: boolean
   currentShipmentId: ShipmentId | null
+  upgrades: VehicleUpgrades
+  isImpounded: boolean
+  impoundFine: number | null          // cash required to recover the vehicle
+  impoundExpiresOnTurn: number | null // turn on which the vehicle is permanently lost
 }
 
-export type VehicleSpec = Omit<Vehicle, 'id' | 'name' | 'isAssigned' | 'currentShipmentId' | 'type'>
+export type VehicleSpec = Omit<Vehicle, 'id' | 'name' | 'isAssigned' | 'currentShipmentId' | 'type' | 'upgrades'>
 
-export const VEHICLE_SPECS: Record<VehicleType, VehicleSpec> = {
-  truck: {
-    purchasePrice: 3000,
-    maintenancePerTurn: 75,    // ~1 domestic contract covers 8+ weeks of upkeep
-    capacity: 20,
-    speedMin: 1,
-    speedMax: 3,
-    resaleValue: 1800,
-  },
-  plane: {
-    purchasePrice: 12000,
-    maintenancePerTurn: 400,   // 1 solid international run comfortably covers this
-    capacity: 50,
-    speedMin: 1,
-    speedMax: 3,
-    resaleValue: 7200,
-  },
-  ship: {
-    purchasePrice: 8000,
-    maintenancePerTurn: 175,   // slow but very low operating cost
-    capacity: 150,
-    speedMin: 3,
-    speedMax: 10,
-    resaleValue: 4800,
-  },
-}
+export const VEHICLE_SPECS: Record<VehicleType, VehicleSpec> = CONFIG.vehicles
 
 export interface Route {
   id: RouteId
@@ -100,7 +89,6 @@ export interface Route {
   status: RouteStatus
   heat: number // 0–5
   illicitLayerActive: boolean
-  illicitLayerPending: boolean
   turnsUntilOpen: number | null
   openAtMs: number | null  // real-time ms when pending route opens; null if not pending
   // Vehicle constraints
@@ -113,12 +101,7 @@ export interface Route {
   consecutiveIllicitRuns: number
 }
 
-export const ROUTE_COSTS: Record<RouteTier, { establish: number; illicit: number }> = {
-  domestic: { establish: 500, illicit: 300 },
-  regional: { establish: 1200, illicit: 600 },
-  international: { establish: 2500, illicit: 1200 },
-  long_haul: { establish: 4000, illicit: 2000 },
-}
+export const ROUTE_COSTS: Record<RouteTier, { establish: number; illicit: number }> = CONFIG.routes.costs
 
 export interface Contract {
   id: ContractId
@@ -130,10 +113,14 @@ export interface Contract {
   deadline: number // turns remaining to complete
   repReward: number | null // null for legit
   riskLevel: RiskLevel
+  tier: RouteTier
   isIllicit: boolean
   isAssigned: boolean
   assignedVehicleId: VehicleId | null
   expiresOnTurn: number
+  isRecurring: boolean    // true = multi-run supply contract
+  totalRuns: number       // total deliveries (1 for regular contracts)
+  runsCompleted: number   // increments after each successful delivery
 }
 
 export interface ShipmentInTransit {
@@ -168,23 +155,19 @@ export interface Contact {
   isAvailable: boolean // false if burned after bust
 }
 
-export const CONTACT_COSTS: Record<ContactType, number> = {
-  customs_insider: 800,
-  port_fixer: 700,
-  informant: 600,
-  fence: 500,
-  underworld_broker: 900,
-  freight_broker: 300,
-  port_agent: 500,
-  airline_partner: 400,
-}
+export const CONTACT_COSTS: Record<ContactType, number> = CONFIG.contacts.costPerTurn
 
-export interface Investigator {
+/** Shared shape for both threat entities. */
+export interface ThreatEntity {
   currentCityId: CityId | null
   appearsOnTurn: number
   probableNextCityId: CityId | null
   isTrackedByInformant: boolean
 }
+/** Domestic / regional threat — appears early, lighter penalties. */
+export type Inspector = ThreatEntity
+/** International / long-haul threat — appears mid-game, severe penalties. */
+export type Interpol = ThreatEntity
 
 // ─── Live event feed (replaces TurnLogEntry / turnLog) ────────────────────────
 
@@ -243,7 +226,8 @@ export interface GameState {
   shipmentsInTransit: ShipmentInTransit[]
   weatherEvents: WeatherEvent[]
   contacts: Contact[]
-  investigator: Investigator
+  inspector: Inspector
+  interpol: Interpol
   events: LiveEvent[]           // live event feed, capped at 50
   phase: GamePhase
   winState: WinState | null
@@ -257,6 +241,8 @@ export interface GameState {
   weeklyStats: WeeklyStats
   // For clock reset on new game
   gameVersion: number
+  // Skill tree: ids of unlocked skills (e.g. 'shadow_1', 'logistics_2')
+  unlockedSkills: string[]
 }
 
 // ─── Derived values ────────────────────────────────────────────────────────────
@@ -267,7 +253,12 @@ export function getNetWorth(state: GameState): number {
 }
 
 export function getMaintenanceCost(state: GameState): number {
-  return state.fleet.reduce((sum, v) => sum + v.maintenancePerTurn, 0)
+  const base = state.fleet.reduce((sum, v) => sum + v.maintenancePerTurn, 0)
+  // logistics_1: Fleet Efficiency — maintenance cost multiplier
+  const multiplier = state.unlockedSkills.includes('logistics_1')
+    ? CONFIG.skills.effects.logistics_1.maintenanceMultiplier
+    : 1.0
+  return Math.round(base * multiplier)
 }
 
 export function getContactsCost(state: GameState): number {
@@ -293,12 +284,7 @@ export function getNetworkCities(routes: Route[]): Set<string> {
 }
 
 /** Minimum reputation required to establish a route of this tier. */
-export const ROUTE_REP_REQUIREMENT: Record<RouteTier, number> = {
-  domestic: 0,
-  regional: 0,
-  international: 60,
-  long_haul: 75,
-}
+export const ROUTE_REP_REQUIREMENT: Record<RouteTier, number> = CONFIG.routes.repRequirements
 
 export function canEstablishRoute(
   route: Route,

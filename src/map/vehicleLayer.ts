@@ -1,6 +1,8 @@
 import { Container, Graphics } from 'pixi.js'
+import type { GeoProjection } from 'd3-geo'
 import type { ShipmentInTransit, Route, Vehicle, VehicleType } from '../engine/gameState'
 import type { ProjectedCity } from './cityLayer'
+import { getRouteSegments } from './routeLayer'
 
 const VEHICLE_COLOR: Record<VehicleType, number> = {
   truck: 0xf59e0b,  // amber
@@ -153,6 +155,8 @@ function buildVehicleContainer(
   type: VehicleType,
   color: number,
   isIllicit: boolean,
+  shipmentId: string,
+  onHover?: (id: string | null, x: number, y: number) => void,
 ): Container {
   const c = new Container()
 
@@ -169,7 +173,66 @@ function buildVehicleContainer(
     c.addChild(ring)
   }
 
+  if (onHover) {
+    c.eventMode = 'static'
+    c.cursor = 'pointer'
+    c.on('pointerover', (e) => onHover(shipmentId, e.global.x, e.global.y))
+    c.on('pointermove', (e) => onHover(shipmentId, e.global.x, e.global.y))
+    c.on('pointerout', () => onHover(null, 0, 0))
+  }
+
   return c
+}
+
+// ── Path interpolation ────────────────────────────────────────────────────────
+
+// Given a multi-segment screen-space path and a progress value (0–1), returns
+// the interpolated {x, y, angle} position. Antimeridian "jumps" between
+// sub-arrays are handled by snapping — the vehicle teleports to the other edge.
+function interpolateAlongSegments(
+  segments: [number, number][][],
+  progress: number,
+): { x: number; y: number; angle: number } | null {
+  // Pre-compute per-edge lengths within each sub-array
+  let totalLen = 0
+  const edgeLens: number[][] = []
+  for (const pts of segments) {
+    const lens: number[] = []
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const dx = pts[i + 1]![0] - pts[i]![0]
+      const dy = pts[i + 1]![1] - pts[i]![1]
+      const l = Math.sqrt(dx * dx + dy * dy)
+      lens.push(l)
+      totalLen += l
+    }
+    edgeLens.push(lens)
+  }
+
+  if (totalLen === 0) return null
+
+  let remaining = Math.min(1, Math.max(0, progress)) * totalLen
+
+  for (let si = 0; si < segments.length; si++) {
+    const pts  = segments[si]!
+    const lens = edgeLens[si]!
+    for (let i = 0; i < lens.length; i++) {
+      const len    = lens[i]!
+      const isLast = si === segments.length - 1 && i === lens.length - 1
+      if (remaining <= len || isLast) {
+        const t  = len > 0 ? Math.min(1, remaining / len) : 1
+        const x1 = pts[i]![0],  y1 = pts[i]![1]
+        const x2 = pts[i + 1]![0], y2 = pts[i + 1]![1]
+        const dx = x2 - x1, dy = y2 - y1
+        return { x: x1 + dx * t, y: y1 + dy * t, angle: Math.atan2(dy, dx) }
+      }
+      remaining -= len
+    }
+  }
+
+  // Fallback: snap to destination
+  const last  = segments[segments.length - 1]!
+  const lastPt = last[last.length - 1]!
+  return { x: lastPt[0], y: lastPt[1], angle: 0 }
 }
 
 // ── Main draw function ────────────────────────────────────────────────────────
@@ -181,6 +244,9 @@ export function drawVehicles(
   cityMap: Map<string, ProjectedCity>,
   fleet: Vehicle[],
   displayProgress: Map<string, number>,
+  waypoints: Record<string, [number, number][]>,
+  projection: GeoProjection,
+  onHover?: (shipmentId: string | null, x: number, y: number) => void,
 ): void {
   const pool = layerPools.get(layer)
   if (!pool) return
@@ -199,29 +265,27 @@ export function drawVehicles(
     const route = routes.find(r => r.id === shipment.routeId)
     if (!route) continue
 
-    const originCity = cityMap.get(route.origin)
-    const destCity = cityMap.get(route.destination)
-    if (!originCity || !destCity) continue
-
-    const vehicle = fleet.find(v => v.id === shipment.vehicleId)
+    const vehicle  = fleet.find(v => v.id === shipment.vehicleId)
     const progress = displayProgress.get(shipment.id) ?? 0
 
-    const x = originCity.px + (destCity.px - originCity.px) * progress
-    const y = originCity.py + (destCity.py - originCity.py) * progress
-    const angle = Math.atan2(destCity.py - originCity.py, destCity.px - originCity.px)
+    const segs = getRouteSegments(route, cityMap, projection, waypoints)
+    if (!segs.length) continue
 
-    const baseColor = vehicle ? VEHICLE_COLOR[vehicle.type] : 0xffffff
+    const pos = interpolateAlongSegments(segs, progress)
+    if (!pos) continue
+
+    const baseColor: number    = vehicle ? VEHICLE_COLOR[vehicle.type] : 0xffffff
     const vehicleType: VehicleType = vehicle?.type ?? 'truck'
 
     let vehicleContainer = pool.get(shipment.id)
     if (!vehicleContainer) {
-      vehicleContainer = buildVehicleContainer(vehicleType, baseColor, shipment.isIllicit)
+      vehicleContainer = buildVehicleContainer(vehicleType, baseColor, shipment.isIllicit, shipment.id, onHover)
       layer.addChild(vehicleContainer)
       pool.set(shipment.id, vehicleContainer)
     }
 
-    vehicleContainer.x = x
-    vehicleContainer.y = y
-    vehicleContainer.rotation = angle
+    vehicleContainer.x        = pos.x
+    vehicleContainer.y        = pos.y
+    vehicleContainer.rotation = pos.angle
   }
 }

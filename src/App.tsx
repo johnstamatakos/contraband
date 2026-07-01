@@ -3,6 +3,7 @@ import { HUD } from './ui/HUD'
 import { WeeklyReport } from './ui/WeeklyReport'
 import { FleetPanel } from './ui/FleetPanel'
 import { ContractBoard } from './ui/ContractBoard'
+import { SkillsPanel } from './ui/SkillsPanel'
 import { GameOver } from './ui/GameOver'
 import { StartScreen } from './ui/StartScreen'
 import { MapView } from './map/MapView'
@@ -44,7 +45,7 @@ function TestModeButton() {
   )
 }
 
-type SidebarTab = 'contracts' | 'fleet'
+type SidebarTab = 'contracts' | 'fleet' | 'skills'
 
 export function App() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('contracts')
@@ -58,10 +59,10 @@ export function App() {
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar: Contracts / Fleet tabs */}
-        <div className="w-80 shrink-0 border-r border-gray-700 flex flex-col bg-gray-900">
+        <div className="w-96 shrink-0 border-r border-gray-700 flex flex-col bg-gray-900">
           {/* Tab bar */}
           <div className="flex border-b border-gray-700">
-            {(['contracts', 'fleet'] as SidebarTab[]).map(tab => (
+            {(['contracts', 'fleet', 'skills'] as SidebarTab[]).map(tab => (
               <button
                 key={tab}
                 onClick={() => setSidebarTab(tab)}
@@ -77,7 +78,7 @@ export function App() {
           </div>
 
           <div className="flex-1 overflow-hidden flex flex-col">
-            {sidebarTab === 'contracts' ? <ContractBoard /> : <FleetPanel />}
+            {sidebarTab === 'contracts' ? <ContractBoard /> : sidebarTab === 'fleet' ? <FleetPanel /> : <SkillsPanel />}
           </div>
 
           <div className="p-3 border-t border-gray-700">

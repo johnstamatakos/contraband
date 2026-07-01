@@ -67,6 +67,7 @@ export function WeeklyReport() {
             <div className="mb-3 overflow-y-auto shrink-0 max-h-48">
               <div className="text-xs font-mono text-gray-600 uppercase tracking-widest mb-1">
                 Deliveries
+                <span className="ml-1 text-gray-700">({summary.completedDeliveries.length})</span>
               </div>
               <div>
                 {summary.completedDeliveries.map((d, i) => (

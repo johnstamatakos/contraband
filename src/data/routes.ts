@@ -23,7 +23,6 @@ function makeRoute(spec: RouteSpec): Route {
     status: spec.open ? 'open' : 'closed',
     heat: 0,
     illicitLayerActive: false,
-    illicitLayerPending: false,
     turnsUntilOpen: null,
     openAtMs: null,
     allowedVehicles: spec.allowedVehicles,

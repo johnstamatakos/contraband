@@ -1,5 +1,6 @@
 import { useGameStore } from '../store/gameStore'
 import { GameClock } from './GameClock'
+import { CONFIG } from '../engine/config'
 
 function Meter({
   label,
@@ -37,7 +38,7 @@ interface HUDProps {
 }
 
 export function HUD({ displayTimeMs }: HUDProps) {
-  const { gameState, netWorth, isPaused, togglePause } = useGameStore()
+  const { gameState, netWorth, isPaused, togglePause, gameSpeed, cycleSpeed } = useGameStore()
   const { cash, reputation, globalHeat } = gameState
   const nw = netWorth()
 
@@ -48,6 +49,8 @@ export function HUD({ displayTimeMs }: HUDProps) {
         displayTimeMs={displayTimeMs}
         isPaused={isPaused}
         onTogglePause={togglePause}
+        gameSpeed={gameSpeed}
+        onCycleSpeed={cycleSpeed}
       />
 
       <div className="w-px h-10 bg-gray-700" />
@@ -65,7 +68,7 @@ export function HUD({ displayTimeMs }: HUDProps) {
         <span className="text-xs text-gray-500 font-mono uppercase tracking-widest">Net Worth</span>
         <span className="text-lg font-bold font-mono text-yellow-400">
           ${nw.toLocaleString()}
-          <span className="text-xs text-gray-500 ml-1">/ $100K</span>
+          <span className="text-xs text-gray-500 ml-1">/ ${(CONFIG.winLose.netWorthGoal / 1000).toFixed(0)}K</span>
         </span>
       </div>
 

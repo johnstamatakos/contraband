@@ -1,3 +1,2 @@
-export const WEEK_MS = 120_000  // 2 minutes real-time = 1 game week
-export const DAY_MS = WEEK_MS / 7  // ~17 seconds real-time = 1 game day
-export const GAME_START_MS = new Date('2026-01-05T00:00:00').getTime()
+// Re-exported from utils/time — canonical location for all game-time constants.
+export { WEEK_MS, DAY_MS, GAME_START_MS } from '../utils/time'

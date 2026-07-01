@@ -1,5 +1,6 @@
 import type { Contract, GameState, Route, RouteTier } from './gameState'
 import { CITY_MAP } from '../data/cities'
+import { CONFIG } from './config'
 
 // ─── Cargo pools ──────────────────────────────────────────────────────────────
 
@@ -15,21 +16,7 @@ const ILLICIT_CARGO: readonly string[] = [
   'Forged Documents', 'Unlicensed Components', 'Restricted Tech',
 ]
 
-// ─── Payout and volume tables ─────────────────────────────────────────────────
-
-const PAYOUT_PER_UNIT: Record<RouteTier, { legit: number; illicit: number }> = {
-  domestic:      { legit: 60,  illicit: 160 },
-  regional:      { legit: 85,  illicit: 210 },
-  international: { legit: 110, illicit: 270 },
-  long_haul:     { legit: 165, illicit: 400 },
-}
-
-const VOLUME_RANGE: Record<RouteTier, { min: number; max: number }> = {
-  domestic:      { min: 5,  max: 18 },
-  regional:      { min: 8,  max: 32 },
-  international: { min: 15, max: 45 },
-  long_haul:     { min: 40, max: 120 },
-}
+// ─── Config aliases (shorthand for readability) ───────────────────────────────
 
 const ILLICIT_RISK: Record<RouteTier, 'LOW' | 'MED' | 'HIGH'> = {
   domestic:      'MED',
@@ -37,21 +24,6 @@ const ILLICIT_RISK: Record<RouteTier, 'LOW' | 'MED' | 'HIGH'> = {
   international: 'HIGH',
   long_haul:     'HIGH',
 }
-
-const ILLICIT_REP: Record<RouteTier, number> = {
-  domestic:      2,
-  regional:      3,
-  international: 4,
-  long_haul:     6,
-}
-
-const TARGET_BOARD_SIZE = 8
-const MIN_LEGIT = 3
-// Max contracts per route pair on the board at once.
-const MAX_PER_ROUTE = 2
-// Max contracts that involve the same city (as origin or destination) on the board at once.
-// Prevents Chicago from appearing in every contract even when it has many routes.
-const MAX_PER_CITY = 3
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,33 +37,6 @@ function pick<T>(arr: readonly T[]): T {
 
 let contractSeq = 1
 
-// ─── Weighted route selection ─────────────────────────────────────────────────
-
-const TIER_WEIGHT: Record<'major_hub' | 'regional' | 'minor', number> = {
-  major_hub: 3,
-  regional:  2,
-  minor:     1,
-}
-
-function routeWeight(r: Route): number {
-  const o = CITY_MAP.get(r.origin)
-  const d = CITY_MAP.get(r.destination)
-  return Math.max(
-    o ? TIER_WEIGHT[o.tier] : 1,
-    d ? TIER_WEIGHT[d.tier] : 1,
-  )
-}
-
-function pickWeighted(routes: Route[]): Route {
-  const total = routes.reduce((s, r) => s + routeWeight(r), 0)
-  let rng = Math.random() * total
-  for (const r of routes) {
-    rng -= routeWeight(r)
-    if (rng <= 0) return r
-  }
-  return routes[routes.length - 1]!
-}
-
 // ─── Contract factory ─────────────────────────────────────────────────────────
 
 function makeContract(
@@ -102,26 +47,32 @@ function makeContract(
   turn: number,
   volumeMultiplier = 1,
 ): Contract {
-  const { min, max } = VOLUME_RANGE[tier]
+  const { min, max } = CONFIG.contracts.volumeRange[tier]
   const volume = Math.round(rand(min, max) * volumeMultiplier)
-  const unitPay = isIllicit ? PAYOUT_PER_UNIT[tier].illicit : PAYOUT_PER_UNIT[tier].legit
+  const unitPay = isIllicit
+    ? CONFIG.contracts.payoutPerUnit[tier].illicit
+    : CONFIG.contracts.payoutPerUnit[tier].legit
   const payout = volume * unitPay
-  const deadline = rand(3, 5)
+  const deadline = rand(CONFIG.contracts.deadlineMin, CONFIG.contracts.deadlineMax)
 
   return {
     id: `c_${turn}_${contractSeq++}_${Math.random().toString(36).slice(2, 5)}`,
     origin,
     destination,
+    tier,
     cargoType: isIllicit ? pick(ILLICIT_CARGO) : pick(LEGIT_CARGO),
     volume,
     payout,
     deadline,
-    repReward: isIllicit ? ILLICIT_REP[tier] : null,
+    repReward: isIllicit ? CONFIG.contracts.illicitRepReward[tier] : null,
     riskLevel: isIllicit ? ILLICIT_RISK[tier] : 'LOW',
     isIllicit,
     isAssigned: false,
     assignedVehicleId: null,
     expiresOnTurn: turn + deadline,
+    isRecurring: false,
+    totalRuns: 1,
+    runsCompleted: 0,
   }
 }
 
@@ -137,8 +88,8 @@ function fillSlots(
   count: number,
   isIllicit: boolean,
   turn: number,
-  boardCount: Map<string, number>,   // existing unassigned count per route key
-  cityBoardCount: Map<string, number>, // existing unassigned count per city
+  boardCount: Map<string, number>,
+  cityBoardCount: Map<string, number>,
 ): Contract[] {
   const result: Contract[] = []
   const batchCount = new Map<string, number>()
@@ -152,11 +103,10 @@ function fillSlots(
     (cityBoardCount.get(city) ?? 0) + (cityBatchCount.get(city) ?? 0)
 
   for (let i = 0; i < count; i++) {
-    // Filter by both per-route cap and per-city cap
     const available = eligibleRoutes.filter(r =>
-      routeTotal(r) < MAX_PER_ROUTE &&
-      cityTotal(r.origin) < MAX_PER_CITY &&
-      cityTotal(r.destination) < MAX_PER_CITY,
+      routeTotal(r) < CONFIG.contracts.maxPerRoute &&
+      cityTotal(r.origin) < CONFIG.contracts.maxPerCity &&
+      cityTotal(r.destination) < CONFIG.contracts.maxPerCity,
     )
     if (available.length === 0) break
 
@@ -211,32 +161,61 @@ export function generateContracts(state: GameState): Contract[] {
     }
   }
 
-  const toGenerate = Math.max(0, TARGET_BOARD_SIZE - currentUnassigned)
+  const toGenerate = Math.max(0, CONFIG.contracts.boardSize - currentUnassigned)
   if (toGenerate === 0) return []
 
   // Phase-based illicit target
+  // network_1: Black Market Access — extra illicit contract slots
+  const illicitBonus = state.unlockedSkills.includes('network_1')
+    ? CONFIG.skills.effects.network_1.illicitContractBonus
+    : 0
   const targetIllicit = illicitRoutes.length > 0
-    ? (turn <= 5 ? rand(1, 2) : turn <= 12 ? rand(2, 3) : rand(3, 4))
+    ? (turn <= 5 ? rand(1, 2) : turn <= 12 ? rand(2, 3) : rand(3, 4)) + illicitBonus
     : 0
 
   // Enforce legit floor
   const illicitToGen = Math.max(0, Math.min(
     targetIllicit,
-    toGenerate - Math.max(0, MIN_LEGIT - currentUnassignedLegit),
+    toGenerate - Math.max(0, CONFIG.contracts.minLegit - currentUnassignedLegit),
   ))
   const legitToGen = toGenerate - illicitToGen
 
-  const generated: Contract[] = [
+  const base: Contract[] = [
     ...fillSlots(openRoutes, legitToGen, false, turn, legitBoard, legitCityBoard),
     ...fillSlots(illicitRoutes, illicitToGen, true, turn, illicitBoard, illicitCityBoard),
   ]
 
+  // Upgrade some contracts to recurring supply runs
+  const rc = CONFIG.contracts.recurring
+  const generated: Contract[] = base.map(c => {
+    if (c.isIllicit) return c  // illicit contracts are never recurring
+    const spawnChance = rc.legitSpawnChance[c.tier as keyof typeof rc.legitSpawnChance]
+    if (Math.random() > spawnChance) return c
+    const { min, max } = rc.runs[c.tier as keyof typeof rc.runs]
+    const runs = rand(min, max)
+    return {
+      ...c,
+      isRecurring: true,
+      totalRuns: runs,
+      runsCompleted: 0,
+      payout: Math.round(c.payout * rc.payoutMultiplier),
+      deadline: runs * CONFIG.contracts.deadlineMax,
+      expiresOnTurn: c.expiresOnTurn + (runs - 1) * CONFIG.contracts.deadlineMax,
+    }
+  })
+
   // High-value bonus for experienced operators
-  if (turn >= 13 && reputation >= 60 && illicitRoutes.length > 0 && generated.length < TARGET_BOARD_SIZE) {
+  const hv = CONFIG.contracts.highValueBonus
+  if (
+    turn >= hv.enabledFromTurn &&
+    reputation >= hv.reputationRequired &&
+    illicitRoutes.length > 0 &&
+    generated.length < CONFIG.contracts.boardSize
+  ) {
     const highTier = illicitRoutes.filter(r => r.tier === 'international' || r.tier === 'long_haul')
     if (highTier.length > 0) {
       const route = pick(highTier)
-      generated.push(makeContract(route.origin, route.destination, route.tier, true, turn, 2))
+      generated.push(makeContract(route.origin, route.destination, route.tier, true, turn, hv.volumeMultiplier))
     }
   }
 

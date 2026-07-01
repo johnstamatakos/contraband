@@ -34,50 +34,139 @@ function routeVisible(route: Route, filter: VehicleFilter): boolean {
   return route.allowedVehicles.some(v => filter[v])
 }
 
-function drawDashedLine(
+// ── Antimeridian helpers ───────────────────────────────────────────────────────
+
+function crossesAntimeridian(lon1: number, lon2: number): boolean {
+  return Math.abs(lon2 - lon1) > 180
+}
+
+// Interpolate the latitude where a segment crosses ±180° longitude.
+// Works for both east-crossing and west-crossing paths.
+function antimeridianCrossLat(lon1: number, lat1: number, lon2: number, lat2: number): number {
+  // If lon2 - lon1 > 180, the shortest path goes west (wraps at -180/+180).
+  const goingWest = (lon2 - lon1) > 180
+  // Unwrap lon2 into the same "direction" as lon1
+  const adjLon2  = goingWest ? lon2 - 360 : lon2 + 360
+  const crossLon = goingWest ? -180 : 180
+  const t = (crossLon - lon1) / (adjLon2 - lon1)
+  return lat1 + (lat2 - lat1) * t
+}
+
+/**
+ * Build screen-space point sub-arrays for a route, splitting at antimeridian crossings.
+ * Routes without waypoints behave identically to the old single-segment approach.
+ *
+ * Returns an array of sub-arrays; draw each sub-array as a connected polyline.
+ * Gaps between sub-arrays represent the antimeridian "teleport" on a flat map.
+ */
+export function getRouteSegments(
+  route: Route,
+  cityMap: Map<string, ProjectedCity>,
+  projection: GeoProjection,
+  waypoints: Record<string, [number, number][]>,
+): [number, number][][] {
+  const oc = CITIES.find(c => c.id === route.origin)
+  const dc = CITIES.find(c => c.id === route.destination)
+  if (!oc || !dc) return []
+
+  const routeWaypoints: [number, number][] = waypoints[route.id] ?? []
+  const geoPoints: [number, number][] = [
+    [oc.lon, oc.lat],
+    ...routeWaypoints,
+    [dc.lon, dc.lat],
+  ]
+
+  // Resolve screen-space position: use cityMap for origin/destination (more accurate),
+  // fall back to raw projectCoord for intermediate waypoints.
+  function screenPt(i: number): [number, number] | null {
+    const [lon, lat] = geoPoints[i]!
+    if (i === 0) {
+      const c = cityMap.get(route.origin)
+      return c ? [c.px, c.py] : projectCoord(projection, lon, lat)
+    }
+    if (i === geoPoints.length - 1) {
+      const c = cityMap.get(route.destination)
+      return c ? [c.px, c.py] : projectCoord(projection, lon, lat)
+    }
+    return projectCoord(projection, lon, lat)
+  }
+
+  const segments: [number, number][][] = []
+  let current: [number, number][] = []
+
+  const first = screenPt(0)
+  if (!first) return []
+  current.push(first)
+
+  for (let i = 0; i + 1 < geoPoints.length; i++) {
+    const [lon1, lat1] = geoPoints[i]!
+    const [lon2, lat2] = geoPoints[i + 1]!
+    const next = screenPt(i + 1)
+    if (!next) continue
+
+    if (crossesAntimeridian(lon1, lon2)) {
+      const crossLat  = antimeridianCrossLat(lon1, lat1, lon2, lat2)
+      const goingWest = (lon2 - lon1) > 180
+      // Use ±179.99 to stay just inside the projection's valid range
+      const exitLon   = goingWest ? -179.99 : 179.99
+      const entryLon  = goingWest ?  179.99 : -179.99
+
+      const exitPt  = projectCoord(projection, exitLon, crossLat)
+      const entryPt = projectCoord(projection, entryLon, crossLat)
+
+      if (exitPt && entryPt) {
+        current.push(exitPt)
+        if (current.length >= 2) segments.push(current)
+        current = [entryPt, next]
+      } else {
+        // Projection couldn't resolve the edge point — fall back to direct line
+        current.push(next)
+      }
+    } else {
+      current.push(next)
+    }
+  }
+
+  if (current.length >= 2) segments.push(current)
+  return segments
+}
+
+// ── Dashed-segment drawing ─────────────────────────────────────────────────────
+
+// Draws animated dashes across multiple screen-space sub-arrays with a continuous
+// dash phase — dashes flow uninterrupted across segment boundaries.
+function drawDashedSegments(
   g: Graphics,
-  x1: number, y1: number,
-  x2: number, y2: number,
+  segments: [number, number][][],
   dashLen: number,
   gapLen: number,
   offset: number,
 ): void {
-  const dx = x2 - x1
-  const dy = y2 - y1
-  const len = Math.sqrt(dx * dx + dy * dy)
-  if (len < 1) return
-
   const total = dashLen + gapLen
-  let pos = -(offset % total)
-  while (pos < len) {
-    const s = Math.max(0, pos)
-    const e = Math.min(len, pos + dashLen)
-    if (e > s) {
-      const t1 = s / len, t2 = e / len
-      g.moveTo(x1 + dx * t1, y1 + dy * t1)
-      g.lineTo(x1 + dx * t2, y1 + dy * t2)
+  let cumLen = 0
+  for (const pts of segments) {
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [x1, y1] = pts[i]!
+      const [x2, y2] = pts[i + 1]!
+      const dx = x2 - x1
+      const dy = y2 - y1
+      const segLen = Math.sqrt(dx * dx + dy * dy)
+      if (segLen < 0.5) { cumLen += segLen; continue }
+
+      // Phase: at cumLen into the path, how far are we into a dash/gap cycle?
+      let pos = -((cumLen + offset) % total)
+      while (pos < segLen) {
+        const s = Math.max(0, pos)
+        const e = Math.min(segLen, pos + dashLen)
+        if (e > s) {
+          g.moveTo(x1 + dx * (s / segLen), y1 + dy * (s / segLen))
+          g.lineTo(x1 + dx * (e / segLen), y1 + dy * (e / segLen))
+        }
+        pos += total
+      }
+      cumLen += segLen
     }
-    pos += total
   }
-}
-
-function endpoints(
-  route: Route,
-  cityMap: Map<string, ProjectedCity>,
-  projection: GeoProjection,
-): { x1: number; y1: number; x2: number; y2: number } | null {
-  const o = cityMap.get(route.origin)
-  const d = cityMap.get(route.destination)
-  if (o && d) return { x1: o.px, y1: o.py, x2: d.px, y2: d.py }
-
-  // Fallback: project from CITIES data
-  const oc = CITIES.find(c => c.id === route.origin)
-  const dc = CITIES.find(c => c.id === route.destination)
-  if (!oc || !dc) return null
-  const op = projectCoord(projection, oc.lon, oc.lat)
-  const dp = projectCoord(projection, dc.lon, dc.lat)
-  if (!op || !dp) return null
-  return { x1: op[0], y1: op[1], x2: dp[0], y2: dp[1] }
 }
 
 export function buildRouteLayer(): Graphics {
@@ -94,6 +183,7 @@ export function drawRoutes(
   dashOffset: number,
   filter: VehicleFilter = ALL_VEHICLES_VISIBLE,
   weatherEvents: WeatherEvent[] = [],
+  waypoints: Record<string, [number, number][]> = {},
 ): void {
   g.clear()
 
@@ -101,9 +191,9 @@ export function drawRoutes(
   for (const route of routes) {
     if (route.status !== 'closed') continue
     if (!routeVisible(route, filter)) continue
-    const ep = endpoints(route, cityMap, projection)
-    if (!ep) continue
-    drawDashedLine(g, ep.x1, ep.y1, ep.x2, ep.y2, CLOSED_DASH, CLOSED_GAP, 0)
+    const segs = getRouteSegments(route, cityMap, projection, waypoints)
+    if (!segs.length) continue
+    drawDashedSegments(g, segs, CLOSED_DASH, CLOSED_GAP, 0)
     g.stroke({ color: CLOSED_COLOR, width: 1, alpha: 0.25 })
   }
 
@@ -111,9 +201,9 @@ export function drawRoutes(
   for (const route of routes) {
     if (route.status !== 'pending') continue
     if (!routeVisible(route, filter)) continue
-    const ep = endpoints(route, cityMap, projection)
-    if (!ep) continue
-    drawDashedLine(g, ep.x1, ep.y1, ep.x2, ep.y2, DASH_LEN, GAP_LEN, dashOffset * 1.5)
+    const segs = getRouteSegments(route, cityMap, projection, waypoints)
+    if (!segs.length) continue
+    drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset * 1.5)
     g.stroke({ color: PENDING_COLOR, width: 1.5, alpha: 0.85 })
   }
 
@@ -122,19 +212,19 @@ export function drawRoutes(
     if (route.status !== 'open') continue
     if (route.heat <= 0 && route.flaggedTurnsRemaining <= 0) continue
     if (!routeVisible(route, filter)) continue
-    const ep = endpoints(route, cityMap, projection)
-    if (!ep) continue
+    const segs = getRouteSegments(route, cityMap, projection, waypoints)
+    if (!segs.length) continue
 
     if (route.flaggedTurnsRemaining > 0) {
       // Orange pulsing overlay for flagged (under investigation) routes
       const pulse = (Math.sin(dashOffset * 0.08) + 1) / 2
       const alpha = 0.35 + pulse * 0.35
-      drawDashedLine(g, ep.x1, ep.y1, ep.x2, ep.y2, DASH_LEN, GAP_LEN, dashOffset)
+      drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset)
       g.stroke({ color: 0xf97316, width: OPEN_WIDTH + 3, alpha })
     } else if (route.heat > 0) {
       // Red glow for hot routes — intensity scales with heat level
       const alpha = (route.heat / 5) * 0.55
-      drawDashedLine(g, ep.x1, ep.y1, ep.x2, ep.y2, DASH_LEN, GAP_LEN, dashOffset)
+      drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset)
       g.stroke({ color: 0xef4444, width: OPEN_WIDTH + 2.5, alpha })
     }
   }
@@ -143,10 +233,9 @@ export function drawRoutes(
   for (const route of routes) {
     if (route.status !== 'open') continue
     if (!routeVisible(route, filter)) continue
-    const ep = endpoints(route, cityMap, projection)
-    if (!ep) continue
-    drawDashedLine(g, ep.x1, ep.y1, ep.x2, ep.y2, DASH_LEN, GAP_LEN, dashOffset)
+    const segs = getRouteSegments(route, cityMap, projection, waypoints)
+    if (!segs.length) continue
+    drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset)
     g.stroke({ color: routeColor(route), width: OPEN_WIDTH, alpha: 0.8 })
   }
-
 }
