@@ -3,6 +3,7 @@ import { useGameStore } from '../store/gameStore'
 import { GameClock } from './GameClock'
 import { CONFIG } from '../engine/config'
 import { getCityName } from '../data/cities'
+import { StatsModal } from './StatsModal'
 
 function Meter({
   label,
@@ -102,6 +103,7 @@ export function HUD({ displayTimeMs }: HUDProps) {
   const { gameState, netWorth, isPaused, togglePause, gameSpeed, cycleSpeed, payDownHeat } = useGameStore()
   const { cash, reputation, globalHeat, turn, lastLayLowTurn } = gameState
   const nw = netWorth()
+  const [showStats, setShowStats] = useState(false)
 
   const layLowCost = CONFIG.layLow.cost
   const canLayLow = cash >= layLowCost && globalHeat > 0 &&
@@ -147,29 +149,35 @@ export function HUD({ displayTimeMs }: HUDProps) {
           color={reputation >= 60 ? 'bg-blue-400' : reputation >= 30 ? 'bg-blue-500' : 'bg-red-500'}
           format={v => `${v}/100`}
         />
-        <div className="flex items-center gap-2">
-          <div className="flex-1">
-            <Meter
-              label="Global Heat"
-              value={globalHeat}
-              max={100}
-              color={globalHeat >= 60 ? 'bg-red-500' : globalHeat >= 30 ? 'bg-orange-400' : 'bg-orange-300'}
-              format={v => `${v}/100`}
-            />
-          </div>
-          <button
-            onClick={payDownHeat}
-            disabled={!canLayLow}
-            title={`Lay Low: -${CONFIG.layLow.heatReduction} heat ($${layLowCost.toLocaleString()})`}
-            className={`shrink-0 text-xs font-mono px-2 py-1 rounded border transition-colors ${
-              canLayLow
-                ? 'bg-gray-800 hover:bg-gray-700 text-orange-400 border-gray-700'
-                : 'bg-gray-900 text-gray-700 border-gray-800 cursor-not-allowed'
-            }`}
-          >
-            Lay Low
-          </button>
-        </div>
+        <Meter
+          label="Global Heat"
+          value={globalHeat}
+          max={100}
+          color={globalHeat >= 60 ? 'bg-red-500' : globalHeat >= 30 ? 'bg-orange-400' : 'bg-orange-300'}
+          format={v => `${v}/100`}
+        />
+      </div>
+
+      {/* Actions */}
+      <div className="flex flex-col gap-1.5 shrink-0">
+        <button
+          onClick={payDownHeat}
+          disabled={!canLayLow}
+          title={`Lay Low: -${CONFIG.layLow.heatReduction} heat ($${layLowCost.toLocaleString()})`}
+          className={`text-xs font-mono px-2.5 py-1 rounded border transition-colors ${
+            canLayLow
+              ? 'bg-gray-800 hover:bg-gray-700 text-orange-400 border-gray-700'
+              : 'bg-gray-900 text-gray-700 border-gray-800 cursor-not-allowed'
+          }`}
+        >
+          Lay Low
+        </button>
+        <button
+          onClick={() => setShowStats(true)}
+          className="text-xs font-mono px-2.5 py-1 rounded border bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 border-gray-700 transition-colors"
+        >
+          Stats
+        </button>
       </div>
 
       {/* Commodity Inventory */}
@@ -205,6 +213,9 @@ export function HUD({ displayTimeMs }: HUDProps) {
           GLOBAL OPS
         </div>
       </div>
+
+      {/* Stats modal */}
+      {showStats && <StatsModal onClose={() => setShowStats(false)} />}
     </div>
   )
 }

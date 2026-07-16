@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import type { GameState, Vehicle, VehicleType, Route, RouteTier, ShipmentInTransit, UpgradeType, SmuggleRun, SmuggleRunHop } from '../engine/gameState'
-import { VEHICLE_SPECS, ROUTE_COSTS, getNetWorth, canEstablishRoute, DEFAULT_UPGRADES } from '../engine/gameState'
+import type { GameState, Vehicle, VehicleType, Route, RouteTier, ShipmentInTransit, UpgradeType, SmuggleRun, SmuggleRunHop, LifetimeStats } from '../engine/gameState'
+import { VEHICLE_SPECS, ROUTE_COSTS, getNetWorth, canEstablishRoute, DEFAULT_UPGRADES, DEFAULT_LIFETIME_STATS } from '../engine/gameState'
 
 export interface ThreatAlert {
   id: string
@@ -35,6 +35,33 @@ import { CONFIG } from '../engine/config'
 export let currentGameTimeMs = 0
 export function setCurrentGameTimeMs(ms: number): void {
   currentGameTimeMs = ms
+}
+
+// ─── Lifetime stats helper ───────────────────────────────────────────────────
+
+function bumpStats(stats: LifetimeStats, delta: Partial<LifetimeStats>): LifetimeStats {
+  const next = { ...stats }
+  for (const [k, v] of Object.entries(delta)) {
+    if (typeof v === 'number' && typeof (next as Record<string, unknown>)[k] === 'number') {
+      (next as Record<string, number>)[k] = ((next as Record<string, number>)[k] ?? 0) + v
+    }
+  }
+  return next
+}
+
+function bumpCommoditySmuggled(stats: LifetimeStats, key: string, qty: number): LifetimeStats {
+  const totals = { ...stats.totalCommoditiesSmuggled }
+  totals[key] = (totals[key] ?? 0) + qty
+  return { ...stats, totalCommoditiesSmuggled: totals }
+}
+
+function peakStats(state: GameState): LifetimeStats {
+  return {
+    ...state.lifetimeStats,
+    peakCash: Math.max(state.lifetimeStats.peakCash, state.cash),
+    peakReputation: Math.max(state.lifetimeStats.peakReputation, state.reputation),
+    largestFleetSize: Math.max(state.lifetimeStats.largestFleetSize, state.fleet.filter(v => !v.isImpounded).length),
+  }
 }
 
 // ─── Initial state factory ────────────────────────────────────────────────────
@@ -95,6 +122,7 @@ function createInitialState(): GameState {
     recentIllicitCompletions: [],
     cityInventory: {},
     smuggleRuns: [],
+    lifetimeStats: { ...DEFAULT_LIFETIME_STATS },
   }
   return { ...base, contracts: generateContracts(base) }
 }
@@ -198,6 +226,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const { gameState, testMode } = get()
     if (gameState.phase === 'game_over') return
     let { state } = resolveWeeklyTick(gameState, weekNumber, gameTimeMs)
+
+    // Track sabotage (compare fleet impound states)
+    const newSabotage = state.fleet.filter(v => v.isImpounded && !gameState.fleet.find(f => f.id === v.id)?.isImpounded).length
+    // Track vehicles lost (fleet shrunk from impound expiry)
+    const vehiclesLost = gameState.fleet.length - state.fleet.length
+    // Track spending (maintenance deducted in weeklyTick)
+    const maintenanceSpent = Math.max(0, gameState.cash - state.cash)
+
+    let stats = state.lifetimeStats
+    if (newSabotage > 0) stats = bumpStats(stats, { timesSabotaged: newSabotage })
+    if (vehiclesLost > 0) stats = bumpStats(stats, { vehiclesLost })
+    if (maintenanceSpent > 0) stats = bumpStats(stats, { totalMoneySpent: maintenanceSpent })
+    state = { ...state, lifetimeStats: stats }
+    state = { ...state, lifetimeStats: peakStats(state) }
+
     if (testMode && state.phase === 'game_over') state = { ...state, phase: 'player_actions', winState: null }
     const newAlerts = detectNewImpounds(gameState.fleet, state.fleet, gameTimeMs)
     set(s => ({
@@ -218,6 +261,47 @@ export const useGameStore = create<GameStore>((set, get) => ({
     let { state } = isSmuggle
       ? resolveSmuggleHopArrival(gameState, shipmentId, gameTimeMs)
       : resolveArrival(gameState, shipmentId, gameTimeMs)
+
+    // Track earnings, busts, completions from the arrival
+    const cashDelta = state.cash - gameState.cash
+    let stats = state.lifetimeStats
+    if (cashDelta > 0) {
+      stats = bumpStats(stats, { totalMoneyEarned: cashDelta })
+      // Track largest payouts
+      if (isSmuggle) {
+        stats = { ...stats, largestSmugglePayout: Math.max(stats.largestSmugglePayout, cashDelta) }
+        // Check if a smuggle run just completed
+        const completedRun = state.smuggleRuns.find(r =>
+          r.status === 'completed' && !gameState.smuggleRuns.find(gr => gr.id === r.id && gr.status === 'completed'),
+        )
+        if (completedRun) {
+          stats = bumpStats(stats, { smuggleRunsCompleted: 1 })
+          stats = bumpCommoditySmuggled(stats, completedRun.commodityKey, completedRun.volume)
+        }
+      } else {
+        stats = { ...stats, largestContractPayout: Math.max(stats.largestContractPayout, cashDelta) }
+        stats = bumpStats(stats, { legitDeliveriesCompleted: 1, totalLegitCargoDelivered: 1 })
+      }
+    }
+    // Track busts
+    const newBusts = state.weeklyStats.busts - gameState.weeklyStats.busts
+    if (newBusts > 0) {
+      stats = bumpStats(stats, { timesBusted: newBusts })
+      if (isSmuggle) stats = bumpStats(stats, { smuggleRunsBusted: newBusts })
+    }
+    // Track close calls (smuggle hop cleared with >= 30% risk)
+    if (isSmuggle && cashDelta >= 0 && newBusts === 0) {
+      const lastDelivery = state.weeklyStats.deliveries[state.weeklyStats.deliveries.length - 1]
+      if (lastDelivery?.risk != null && lastDelivery.risk >= 0.30 && !lastDelivery.wasBust) {
+        stats = bumpStats(stats, { closeCalls: 1 })
+      }
+    }
+    // Track vehicles lost
+    const vLost = gameState.fleet.length - state.fleet.length
+    if (vLost > 0) stats = bumpStats(stats, { vehiclesLost: vLost })
+
+    state = { ...state, lifetimeStats: stats }
+    state = { ...state, lifetimeStats: peakStats(state) }
 
     if (testMode && state.phase === 'game_over') state = { ...state, phase: 'player_actions', winState: null }
     const newAlerts = detectNewImpounds(gameState.fleet, state.fleet, gameTimeMs)
@@ -333,12 +417,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
       type: 'success' as const,
     }
 
+    const newFleet = [...gameState.fleet, vehicle]
     set({
       gameState: {
         ...gameState,
         cash: gameState.cash - spec.purchasePrice,
-        fleet: [...gameState.fleet, vehicle],
+        fleet: newFleet,
         events: [...gameState.events, newEvent].slice(-50),
+        lifetimeStats: {
+          ...bumpStats(gameState.lifetimeStats, { totalMoneySpent: spec.purchasePrice, vehiclesPurchased: 1 }),
+          largestFleetSize: Math.max(gameState.lifetimeStats.largestFleetSize, newFleet.length),
+        },
       },
     })
   },
@@ -382,10 +471,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         cash: gameState.cash - cost,
         routes: updatedRoutes,
         events: [...gameState.events, newEvent].slice(-50),
+        lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: cost, routesEstablished: 1 }),
       },
     })
   },
-
 
 
   assignVehicle: (contractId: string, vehicleId: string, legIndex = 0) => {
@@ -549,6 +638,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             : v,
         ),
         events: [...gameState.events, newEvent].slice(-50),
+        lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: cost }),
       },
     })
   },
@@ -637,6 +727,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             : v,
         ),
         events: [...gameState.events, newEvent].slice(-50),
+        lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: vehicle.impoundFine }),
       },
     })
   },
@@ -688,6 +779,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         globalHeat: newHeat,
         lastLayLowTurn: gameState.turn,
         events: [...gameState.events, newEvent].slice(-50),
+        lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: cost }),
       },
     })
   },
@@ -731,6 +823,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           ? { ...gameState.interpol, isTrackedByInformant: true }
           : gameState.interpol,
         events: [...gameState.events, newEvent].slice(-50),
+        lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: cost, skillsUnlocked: 1 }),
       },
     })
   },
@@ -775,6 +868,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         cash: gameState.cash - totalCost,
         cityInventory: cityInv,
         events: [...gameState.events, newEvent].slice(-CONFIG.ui.eventFeedCap),
+        lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: totalCost }),
       },
     })
   },

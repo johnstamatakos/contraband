@@ -265,6 +265,52 @@ export interface SmuggleRun {
   completedAtTurn: number | null
 }
 
+// ─── Lifetime stats (persisted across weeks, never reset) ───────────────────
+
+export interface LifetimeStats {
+  totalMoneyEarned: number        // all income (legit + smuggle payouts)
+  totalMoneySpent: number         // all spending (vehicles, routes, commodities, upgrades, skills, fines, lay low)
+  smuggleRunsCompleted: number
+  smuggleRunsBusted: number
+  legitDeliveriesCompleted: number
+  timesBusted: number             // total busts (smuggle + legacy)
+  timesSabotaged: number          // rival sabotage events
+  largestFleetSize: number        // peak fleet count
+  largestSmugglePayout: number    // biggest single smuggle run revenue
+  largestContractPayout: number   // biggest single legit contract payout
+  totalCommoditiesSmuggled: Record<string, number>  // commodity key -> total units delivered
+  totalLegitCargoDelivered: number
+  routesEstablished: number
+  vehiclesPurchased: number
+  vehiclesLost: number            // permanently seized or expired impounds
+  skillsUnlocked: number
+  closeCalls: number              // smuggle hops cleared with >= 30% risk
+  peakReputation: number
+  peakCash: number
+}
+
+export const DEFAULT_LIFETIME_STATS: LifetimeStats = {
+  totalMoneyEarned: 0,
+  totalMoneySpent: 0,
+  smuggleRunsCompleted: 0,
+  smuggleRunsBusted: 0,
+  legitDeliveriesCompleted: 0,
+  timesBusted: 0,
+  timesSabotaged: 0,
+  largestFleetSize: 2,
+  largestSmugglePayout: 0,
+  largestContractPayout: 0,
+  totalCommoditiesSmuggled: {},
+  totalLegitCargoDelivered: 0,
+  routesEstablished: 0,
+  vehiclesPurchased: 0,
+  vehiclesLost: 0,
+  skillsUnlocked: 0,
+  closeCalls: 0,
+  peakReputation: 10,
+  peakCash: 15_000,
+}
+
 // ─── Root game state ──────────────────────────────────────────────────────────
 
 export interface GameState {
@@ -307,6 +353,8 @@ export interface GameState {
   cityInventory: Record<string, Record<string, number>>
   // Active smuggling runs
   smuggleRuns: SmuggleRun[]
+  // Lifetime stats (never reset, tracks all-time records)
+  lifetimeStats: LifetimeStats
 }
 
 // ─── Derived values ────────────────────────────────────────────────────────────
