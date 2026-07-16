@@ -119,7 +119,6 @@ function createInitialState(): GameState {
     profitHistory: [],
     hasCompletedFirstIllicit: false,
     lastLayLowTurn: 0,
-    recentIllicitCompletions: [],
     cityInventory: {},
     smuggleRuns: [],
     lifetimeStats: { ...DEFAULT_LIFETIME_STATS },

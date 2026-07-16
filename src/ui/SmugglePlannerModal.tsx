@@ -4,6 +4,7 @@ import { useGameStore, type SmuggleRunConfig } from '../store/gameStore'
 import { CONFIG } from '../engine/config'
 import { getCityName } from '../data/cities'
 import { getSellDestinations } from '../data/commodities'
+import { getActiveLegitCount } from '../engine/gameState'
 import { findShortestPath, findRouteBetween, canVehicleTraversePath } from '../engine/pathfinding'
 import { smuggleHopDetection } from '../engine/detection'
 import { VEHICLE_ICON } from './vehicleConstants'
@@ -193,9 +194,7 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
       ? Math.min(...selectedVehicles.map(v => v.upgrades.concealment)) as 0 | 1 | 2
       : 0 as const
 
-    const activeLegitCount = gameState.shipmentsInTransit.filter(s =>
-      !s.isIllicit && !s.smuggleRunId,
-    ).length
+    const activeLegitCount = getActiveLegitCount(gameState.shipmentsInTransit)
 
     return builtPath.slice(1).map((destCity, i) => {
       const originCity = builtPath[i]!

@@ -4,4 +4,5 @@
  *   arrivalResolver.ts — resolves a single shipment arrival (detection, payout, bust, auto-redispatch)
  */
 export { resolveWeeklyTick, checkWinLose, INTERPOL_TIERS } from './weeklyTick'
-export { resolveArrival, resolveSmuggleHopArrival } from './arrivalResolver'
+export { resolveArrival } from './arrivalResolver'
+export { resolveSmuggleHopArrival } from './smuggleResolver'

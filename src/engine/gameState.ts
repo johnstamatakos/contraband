@@ -194,7 +194,6 @@ export interface DetectionBreakdown {
   skillsReduction: number      // shadow_1 flat reduction
   concealmentReduction: number // vehicle concealment upgrade
   legitCover: number           // plausible deniability from legit recurring shipments
-  contactsReduction: number    // customs_insider on intl/long-haul
   vehiclePenalty: number       // smuggling: extra vehicles in convoy
   volumePenalty: number        // smuggling: large cargo volume
   final: number                // clamped total probability
@@ -347,8 +346,6 @@ export interface GameState {
   profitHistory: number[]
   // Turn when player last used "Lay Low" heat reduction
   lastLayLowTurn: number
-  // Route IDs of recently completed illicit contracts (cleared per generation cycle)
-  recentIllicitCompletions: string[]
   // ── Commodity smuggling ──
   // Per-city inventory of purchased illicit commodities
   cityInventory: Record<string, Record<string, number>>
@@ -359,6 +356,11 @@ export interface GameState {
 }
 
 // ─── Derived values ────────────────────────────────────────────────────────────
+
+/** Count of active legit (non-smuggle) shipments currently in transit. */
+export function getActiveLegitCount(shipments: ShipmentInTransit[]): number {
+  return shipments.filter(s => !s.isIllicit && !s.smuggleRunId).length
+}
 
 export function getNetWorth(state: GameState): number {
   const fleetValue = state.fleet.reduce((sum, v) => sum + v.resaleValue, 0)

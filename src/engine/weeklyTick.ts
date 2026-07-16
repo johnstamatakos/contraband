@@ -85,7 +85,7 @@ function stepRefreshContracts(state: GameState, gameTimeMs: number): StepResult 
   if (dropped > 0) events.push(makeEvent(gameTimeMs, `${dropped} contract${dropped > 1 ? 's' : ''} expired.`, 'info'))
   if (fresh.length > 0) events.push(makeEvent(gameTimeMs, `${fresh.length} new contract${fresh.length > 1 ? 's' : ''} available.`, 'success'))
 
-  return { state: { ...state, contracts: [...active, ...fresh], recentIllicitCompletions: [] }, events }
+  return { state: { ...state, contracts: [...active, ...fresh] }, events }
 }
 
 // ── Step 5a/b: Move inspector and interpol ────────────────────────────────────

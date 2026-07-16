@@ -28,7 +28,6 @@ export function DetectionBadge({ breakdown, faded = false }: { breakdown: Detect
     { label: 'Skills',      value: breakdown.skillsReduction },
     { label: 'Concealment', value: breakdown.concealmentReduction },
     { label: 'Legit cover', value: breakdown.legitCover },
-    { label: 'Contacts',    value: breakdown.contactsReduction },
   ].filter(r => r.value > 0.001)
 
   const tooltip = pos

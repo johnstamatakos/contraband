@@ -125,29 +125,6 @@ export function getRouteSegments(
   return segments
 }
 
-// ── Perpendicular offset helper ────────────────────────────────────────────────
-
-// Shifts each point in a polyline by `offsetPx` pixels perpendicular to the
-// local segment direction (left-hand side when walking origin→destination).
-function offsetSegments(segments: [number, number][][], offsetPx: number): [number, number][][] {
-  return segments.map(pts => {
-    if (pts.length < 2) return pts
-    return pts.map((pt, i) => {
-      // Direction vector: use the segment this point belongs to
-      const [ax, ay] = i < pts.length - 1 ? pts[i]! : pts[i - 1]!
-      const [bx, by] = i < pts.length - 1 ? pts[i + 1]! : pts[i]!
-      const dx = bx - ax
-      const dy = by - ay
-      const len = Math.sqrt(dx * dx + dy * dy)
-      if (len < 0.001) return pt
-      // Perpendicular (left-hand): (-dy, dx) normalised
-      const nx = -dy / len
-      const ny =  dx / len
-      return [pt[0] + nx * offsetPx, pt[1] + ny * offsetPx] as [number, number]
-    })
-  })
-}
-
 // ── Dashed-segment drawing ─────────────────────────────────────────────────────
 
 // Draws animated dashes across multiple screen-space sub-arrays with a continuous
