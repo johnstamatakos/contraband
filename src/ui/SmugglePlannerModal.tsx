@@ -343,7 +343,8 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
         )}
 
         {/* Bottom panel: vehicles, volume, risk, payout — evenly spaced */}
-        <div className="grid grid-cols-4 gap-3 px-4 py-3 border-t border-gray-800 shrink-0">
+        <div className="grid grid-cols-4 gap-3 px-4 py-3 border-t border-gray-800 shrink-0"
+          onWheel={e => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation() }}>
           {/* Vehicles */}
           <div className="min-w-0">
             <label className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider block mb-1">
