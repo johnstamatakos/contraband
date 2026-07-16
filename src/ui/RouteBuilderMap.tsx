@@ -3,6 +3,7 @@ import { CITIES, CITY_MAP, getCityName } from '../data/cities'
 import { createProjection, projectCoord, zoomViewport, DEFAULT_VIEWPORT } from '../map/projection'
 import type { Viewport } from '../map/projection'
 import { drawWorldToCanvas } from '../map/worldCanvas'
+import { ROUTE_VISUAL_WAYPOINTS } from '../data/routeWaypoints'
 import type { Route } from '../engine/gameState'
 import type { GeoProjection } from 'd3-geo'
 
@@ -18,6 +19,27 @@ interface RouteBuilderMapProps {
 }
 
 const HIT_RADIUS = 14
+
+/** Draw a line from city A to city B, routing through visual waypoints if defined. */
+function drawRouteLine(
+  ctx: CanvasRenderingContext2D,
+  fromPos: [number, number],
+  toPos: [number, number],
+  routeId: string,
+  projection: GeoProjection,
+) {
+  const waypoints = ROUTE_VISUAL_WAYPOINTS[routeId]
+  ctx.beginPath()
+  ctx.moveTo(fromPos[0], fromPos[1])
+  if (waypoints) {
+    for (const [lon, lat] of waypoints) {
+      const wp = projectCoord(projection, lon, lat)
+      if (wp) ctx.lineTo(wp[0], wp[1])
+    }
+  }
+  ctx.lineTo(toPos[0], toPos[1])
+  ctx.stroke()
+}
 
 function getReachableFrom(cityId: string, openRoutes: Route[]): Set<string> {
   const reachable = new Set<string>()
@@ -97,7 +119,7 @@ export function RouteBuilderMap({
 
     const zoom = viewportRef.current.zoom
 
-    // Draw open routes as thin gray lines
+    // Draw open routes as thin gray lines (with waypoints)
     ctx.strokeStyle = '#374151'
     ctx.lineWidth = Math.max(0.8, 1 * zoom)
     ctx.setLineDash([4, 3])
@@ -105,27 +127,25 @@ export function RouteBuilderMap({
       const from = positions.get(route.origin)
       const to = positions.get(route.destination)
       if (!from || !to) continue
-      ctx.beginPath()
-      ctx.moveTo(from[0], from[1])
-      ctx.lineTo(to[0], to[1])
-      ctx.stroke()
+      drawRouteLine(ctx, from, to, route.id, projection)
     }
     ctx.setLineDash([])
 
-    // Draw built path as solid amber line
+    // Draw built path as solid amber line (with waypoints per hop)
     if (builtPath.length > 1) {
       ctx.strokeStyle = '#f59e0b'
       ctx.lineWidth = Math.max(2.5, 3 * zoom)
       ctx.shadowColor = '#f59e0b'
       ctx.shadowBlur = 8
-      ctx.beginPath()
-      for (let i = 0; i < builtPath.length; i++) {
-        const pos = positions.get(builtPath[i]!)
-        if (!pos) continue
-        if (i === 0) ctx.moveTo(pos[0], pos[1])
-        else ctx.lineTo(pos[0], pos[1])
+      for (let i = 0; i < builtPath.length - 1; i++) {
+        const from = positions.get(builtPath[i]!)
+        const to = positions.get(builtPath[i + 1]!)
+        if (!from || !to) continue
+        const routeId = `route_${builtPath[i]}_${builtPath[i + 1]}`
+        const reverseId = `route_${builtPath[i + 1]}_${builtPath[i]}`
+        const id = ROUTE_VISUAL_WAYPOINTS[routeId] ? routeId : reverseId
+        drawRouteLine(ctx, from, to, id, projection)
       }
-      ctx.stroke()
       ctx.shadowBlur = 0
     }
 
