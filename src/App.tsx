@@ -29,7 +29,12 @@ function TestModeButton() {
   const handleClick = () => {
     useGameStore.setState(s => ({
       testMode: true,
-      gameState: { ...s.gameState, cash: s.gameState.cash + 50_000, reputation: 60 },
+      gameState: {
+        ...s.gameState,
+        cash: 1_000_000,
+        reputation: 60,
+        routes: s.gameState.routes.map(r => r.status === 'closed' ? { ...r, status: 'open' as const, turnsUntilOpen: null, openAtMs: null } : r),
+      },
     }))
   }
   return (
