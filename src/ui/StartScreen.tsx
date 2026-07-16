@@ -1,65 +1,135 @@
+import { useState, useEffect } from 'react'
 import { useGameStore } from '../store/gameStore'
+
+type Phase = 'hidden' | 'scanning' | 'content'
 
 export function StartScreen() {
   const { hasStarted, startGame } = useGameStore()
+  const [phase, setPhase] = useState<Phase>('hidden')
+
+  useEffect(() => {
+    if (hasStarted) return
+    // Small delay so initial render settles before the transition fires
+    const t1 = setTimeout(() => setPhase('scanning'), 80)
+    // Content fades in after the wipe completes
+    const t2 = setTimeout(() => setPhase('content'), 1200)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [hasStarted])
+
   if (hasStarted) return null
 
-  return (
-    <div className="fixed inset-0 z-50 bg-gray-950/95 flex items-center justify-center">
-      <div className="max-w-lg w-full mx-6 space-y-8">
+  const scanning  = phase !== 'hidden'
+  const showContent = phase === 'content'
 
-        {/* Logo */}
+  return (
+    <div className="fixed inset-0 z-50 bg-gray-950 flex items-center justify-center">
+      <div className="max-w-lg w-full mx-6 space-y-7">
+
+        {/* ── Logo with wipe effect ─────────────────────────── */}
         <div className="text-center">
-          <div className="font-black font-mono leading-none tracking-tighter mb-1 text-6xl">
-            <span className="text-red-600">CONTRA</span>
-            <span className="text-red-700 opacity-70"> // BAND</span>
+          <div className="relative inline-block overflow-hidden">
+            {/* Title text — revealed by clip-path */}
+            <div
+              className="font-black font-mono leading-none tracking-tighter text-6xl select-none"
+              style={{
+                clipPath: scanning ? 'inset(0 0% 0 0)' : 'inset(0 100% 0 0)',
+                transition: 'clip-path 1.05s cubic-bezier(0.77, 0, 0.175, 1)',
+              }}
+            >
+              <span className="text-red-600">CONTRA</span>
+              <span className="text-red-800 opacity-80"> // BAND</span>
+            </div>
+
+            {/* Scanner line — sweeps left → right in sync with the reveal */}
+            <div
+              className="pointer-events-none absolute inset-y-[-4px]"
+              style={{
+                left: scanning ? '100%' : '0%',
+                width: '3px',
+                background: 'linear-gradient(to bottom, transparent, #ef4444cc, #ef4444, #ef4444cc, transparent)',
+                boxShadow: '0 0 12px 4px rgba(239,68,68,0.55)',
+                opacity: showContent ? 0 : 1,
+                transition: scanning && !showContent
+                  ? 'left 1.05s cubic-bezier(0.77, 0, 0.175, 1)'
+                  : 'opacity 0.25s ease',
+              }}
+            />
           </div>
-          <div className="text-gray-600 font-mono text-xs tracking-[0.3em] mt-2 uppercase">
+
+          {/* Tagline fades in after the wipe */}
+          <div
+            className="text-gray-600 font-mono text-xs tracking-[0.3em] mt-2 uppercase"
+            style={{ opacity: showContent ? 1 : 0, transition: 'opacity 0.5s ease 0.1s' }}
+          >
             Global Logistics Operations
           </div>
         </div>
 
-        {/* Divider */}
-        <div className="border-t border-gray-800" />
-
-        {/* Brief intro */}
-        <div className="space-y-3 font-mono text-sm text-gray-400 leading-relaxed">
-          <p>
-            You run a global cargo operation — legitimate freight on the surface,
-            contraband underneath. Establish routes, assign vehicles, avoid detection.
-          </p>
-          <p>
-            The clock runs in real time. <span className="text-gray-300">1 week = 2 minutes.</span> Pause anytime to plan your moves.
-          </p>
-        </div>
-
-        {/* Quick rules */}
-        <div className="grid grid-cols-2 gap-3 text-xs font-mono">
-          <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
-            <div className="text-amber-400 font-bold uppercase tracking-widest text-xs">Routes</div>
-            <div className="text-gray-400">Click a city on the map to establish routes. Costs cash, opens in 1 day.</div>
-          </div>
-          <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
-            <div className="text-blue-400 font-bold uppercase tracking-widest text-xs">Contracts</div>
-            <div className="text-gray-400">Assign idle vehicles to contracts in the sidebar. Legit builds cash, illicit builds rep.</div>
-          </div>
-          <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
-            <div className="text-red-400 font-bold uppercase tracking-widest text-xs">Heat</div>
-            <div className="text-gray-400">Route heat rises with illicit runs. The Inspector (domestic) arrives week 4 — Interpol (international) at week 12.</div>
-          </div>
-          <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
-            <div className="text-emerald-400 font-bold uppercase tracking-widest text-xs">Win</div>
-            <div className="text-gray-400">Reach $100K net worth or 80 reputation before going bankrupt or losing all rep.</div>
-          </div>
-        </div>
-
-        {/* CTA */}
-        <button
-          onClick={startGame}
-          className="w-full py-4 bg-red-700 hover:bg-red-600 active:bg-red-800 text-white font-black font-mono text-lg tracking-widest uppercase rounded transition-colors"
+        {/* ── Everything below fades in together after the wipe ─ */}
+        <div
+          style={{ opacity: showContent ? 1 : 0, transition: 'opacity 0.5s ease 0.15s' }}
+          className="space-y-7"
         >
-          Begin Operation
-        </button>
+          <div className="border-t border-gray-800" />
+
+          {/* Hook */}
+          <div className="space-y-2 font-mono text-sm text-gray-400 leading-relaxed">
+            <p>
+              You run a global cargo network — legitimate freight on the surface, contraband
+              underneath. Establish routes, assign vehicles, and stay ahead of investigators
+              long enough to build a $2M empire.
+            </p>
+            <p>
+              The clock runs in real time. <span className="text-gray-300">1 week = 2 minutes.</span> Pause anytime to plan your next move.
+            </p>
+          </div>
+
+          {/* Core mechanics grid */}
+          <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+
+            <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
+              <div className="text-amber-400 font-bold uppercase tracking-widest">Routes</div>
+              <div className="text-gray-400 leading-relaxed">
+                Click a city to open a connection. Then <span className="text-gray-300">activate the illicit route</span> to unlock
+                black-market contracts on it.
+              </div>
+            </div>
+
+            <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
+              <div className="text-blue-400 font-bold uppercase tracking-widest">Contracts</div>
+              <div className="text-gray-400 leading-relaxed">
+                <span className="text-gray-300">Legit runs loop automatically</span> — assign once, collect indefinitely.
+                Illicit runs are one-shot: higher payout and +rep, but risk a bust.
+              </div>
+            </div>
+
+            <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
+              <div className="text-red-400 font-bold uppercase tracking-widest">Threats</div>
+              <div className="text-gray-400 leading-relaxed">
+                Route heat rises with every illicit run. <span className="text-gray-300">Inspector</span> targets domestic routes from
+                week 10. <span className="text-gray-300">Interpol</span> hunts international from week 20.
+              </div>
+            </div>
+
+            <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
+              <div className="text-emerald-400 font-bold uppercase tracking-widest">Win / Lose</div>
+              <div className="text-gray-400 leading-relaxed">
+                Reach <span className="text-gray-300">$2M net worth</span> or <span className="text-gray-300">100 reputation</span>.
+                Lose if net worth hits zero or reputation is destroyed.
+              </div>
+            </div>
+
+          </div>
+
+          {/* CTA */}
+          <button
+            onClick={startGame}
+            className="w-full py-4 bg-red-700 hover:bg-red-600 active:bg-red-800 text-white font-black font-mono text-lg tracking-widest uppercase rounded transition-colors"
+          >
+            Begin Operation
+          </button>
+        </div>
+
       </div>
     </div>
   )

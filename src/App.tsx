@@ -8,6 +8,7 @@ import { GameOver } from './ui/GameOver'
 import { StartScreen } from './ui/StartScreen'
 import { MapView } from './map/MapView'
 import { EventFeed } from './ui/EventFeed'
+import { ThreatAlertModal } from './ui/ThreatAlertModal'
 import { useGameClock } from './hooks/useGameClock'
 import { useState } from 'react'
 
@@ -50,6 +51,7 @@ type SidebarTab = 'contracts' | 'fleet' | 'skills'
 export function App() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('contracts')
   const { gameTimeMsRef, displayTimeMs } = useGameClock()
+  const hasImpoundedVehicles = useGameStore(s => s.gameState.fleet.some(v => v.isImpounded))
 
   return (
     <div className="h-screen overflow-hidden bg-gray-950 text-white flex flex-col">
@@ -58,7 +60,7 @@ export function App() {
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar: Contracts / Fleet tabs */}
+        {/* Left sidebar: Contracts / Fleet / Skills tabs */}
         <div className="w-96 shrink-0 border-r border-gray-700 flex flex-col bg-gray-900">
           {/* Tab bar */}
           <div className="flex border-b border-gray-700">
@@ -66,19 +68,24 @@ export function App() {
               <button
                 key={tab}
                 onClick={() => setSidebarTab(tab)}
-                className={`flex-1 text-xs font-mono uppercase tracking-widest py-2.5 transition-colors ${
+                className={`relative flex-1 text-xs font-mono uppercase tracking-wider py-2.5 transition-colors ${
                   sidebarTab === tab
                     ? 'bg-gray-800 text-white border-b-2 border-amber-500'
                     : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
                 {tab}
+                {tab === 'fleet' && hasImpoundedVehicles && (
+                  <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                )}
               </button>
             ))}
           </div>
 
           <div className="flex-1 overflow-hidden flex flex-col">
-            {sidebarTab === 'contracts' ? <ContractBoard /> : sidebarTab === 'fleet' ? <FleetPanel /> : <SkillsPanel />}
+            {sidebarTab === 'contracts' ? <ContractBoard />
+              : sidebarTab === 'fleet' ? <FleetPanel />
+              : <SkillsPanel />}
           </div>
 
           <div className="p-3 border-t border-gray-700">
@@ -95,6 +102,9 @@ export function App() {
 
       {/* Weekly report (pauses game while open) */}
       <WeeklyReport />
+
+      {/* Threat alert modal (pauses game on impound) */}
+      <ThreatAlertModal />
 
       {/* Game over overlay */}
       <GameOver />

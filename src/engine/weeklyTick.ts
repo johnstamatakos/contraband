@@ -1,10 +1,10 @@
 import { CONFIG } from './config'
-import type { GameState, Route, WeeklySummary } from './gameState'
-import { getFixedCosts, getMaintenanceCost, getContactsCost } from './gameState'
+import type { GameState, Route, ShipmentInTransit, WeeklySummary } from './gameState'
+import { getFixedCosts, getMaintenanceCost } from './gameState'
 import { generateContracts } from './contracts'
 import { maybeGenerateWeather } from './weather'
 import { moveThreat } from './threatMovement'
-import { makeEvent, routeLabel, appendEvents, checkWinLose, INTERPOL_TIERS } from './engineHelpers'
+import { makeEvent, routeLabel, appendEvents, checkWinLose } from './engineHelpers'
 import type { StepResult } from './engineHelpers'
 import { getSkillEffect } from '../utils/gameHelpers'
 import { WEEK_MS } from '../utils/time'
@@ -44,13 +44,11 @@ function stepForecast(state: GameState, gameTimeMs: number): StepResult {
 function stepPayFixedCosts(state: GameState, gameTimeMs: number): StepResult {
   const total       = getFixedCosts(state)
   const maintenance = getMaintenanceCost(state)
-  const contacts    = getContactsCost(state)
 
   if (total === 0) return { state, events: [] }
 
   const events = []
   if (maintenance > 0) events.push(makeEvent(gameTimeMs, `Fleet maintenance: -$${maintenance.toLocaleString()}`, 'info'))
-  if (contacts   > 0) events.push(makeEvent(gameTimeMs, `Contact fees: -$${contacts.toLocaleString()}`, 'info'))
 
   return { state: { ...state, cash: state.cash - total }, events }
 }
@@ -61,7 +59,7 @@ function stepAdvanceShipments(state: GameState, gameTimeMs: number): StepResult 
   const frozenRouteIds = new Set(
     state.weatherEvents.filter(e => !e.isForecast).flatMap(e => e.affectedRouteIds),
   )
-  const events = []
+  const events: ReturnType<typeof makeEvent>[] = []
 
   const updatedShipments = state.shipmentsInTransit.map(s => {
     if (frozenRouteIds.has(s.routeId)) {
@@ -78,15 +76,16 @@ function stepAdvanceShipments(state: GameState, gameTimeMs: number): StepResult 
 // ── Step 4: Refresh contract board ────────────────────────────────────────────
 
 function stepRefreshContracts(state: GameState, gameTimeMs: number): StepResult {
+  // Drop unassigned contracts whose deadline has run out
   const active  = state.contracts.filter(c => c.isAssigned || c.deadline > 0)
   const dropped = state.contracts.length - active.length
   const fresh   = generateContracts({ ...state, contracts: active })
 
   const events = []
-  if (fresh.length  > 0) events.push(makeEvent(gameTimeMs, `${fresh.length} new contract(s) available.`, 'success'))
-  else if (dropped  > 0) events.push(makeEvent(gameTimeMs, `${dropped} expired contract(s) removed.`, 'info'))
+  if (dropped > 0) events.push(makeEvent(gameTimeMs, `${dropped} contract${dropped > 1 ? 's' : ''} expired.`, 'info'))
+  if (fresh.length > 0) events.push(makeEvent(gameTimeMs, `${fresh.length} new contract${fresh.length > 1 ? 's' : ''} available.`, 'success'))
 
-  return { state: { ...state, contracts: [...active, ...fresh] }, events }
+  return { state: { ...state, contracts: [...active, ...fresh], recentIllicitCompletions: [] }, events }
 }
 
 // ── Step 5a/b: Move inspector and interpol ────────────────────────────────────
@@ -106,11 +105,10 @@ function stepDecayRouteHeat(state: GameState): StepResult {
   const activeIllicitRouteIds = new Set(
     state.shipmentsInTransit.filter(s => s.isIllicit).map(s => s.routeId),
   )
-  const extraDecay = getSkillEffect(state.unlockedSkills, 'shadow_2', 'routeHeatExtraDecay')
 
   const updatedRoutes: Route[] = state.routes.map(r => {
     if (r.heat <= 0 || activeIllicitRouteIds.has(r.id)) return r
-    return { ...r, heat: Math.max(0, r.heat - 1 - extraDecay) }
+    return { ...r, heat: Math.max(0, r.heat - 1) }
   })
 
   return { state: { ...state, routes: updatedRoutes }, events: [] }
@@ -124,7 +122,21 @@ function stepDecayGlobalHeat(state: GameState): StepResult {
   return { state: { ...state, globalHeat: newHeat }, events: [] }
 }
 
-// ── Step 8: Expire impounded vehicles ─────────────────────────────────────────
+// ── Step 8a: Rep decay for inactivity ─────────────────────────────────────────
+
+function stepDecayReputation(state: GameState, gameTimeMs: number): StepResult {
+  // Gate: no decay until the player has completed at least one illicit contract
+  if (!state.hasCompletedFirstIllicit) return { state, events: [] }
+  const { repDecayThresholdWeeks, repDecayPerWeek } = CONFIG.economy
+  if (state.turnsWithoutIllicitActivity < repDecayThresholdWeeks) return { state, events: [] }
+  const newRep = Math.max(0, state.reputation - repDecayPerWeek)
+  const event = makeEvent(gameTimeMs,
+    `No illicit activity — reputation fading. -${repDecayPerWeek} rep.`,
+    'warning')
+  return { state: { ...state, reputation: newRep }, events: [event] }
+}
+
+// ── Step 8b: Expire impounded vehicles ────────────────────────────────────────
 
 function stepExpireImpounds(state: GameState, gameTimeMs: number): StepResult {
   const events = []
@@ -140,10 +152,101 @@ function stepExpireImpounds(state: GameState, gameTimeMs: number): StepResult {
   return { state: { ...state, fleet }, events }
 }
 
-// ── Step 9: Advance turn counters and expire flags ────────────────────────────
+// ── Step 9a: Rival sabotage ───────────────────────────────────────────────────
+
+function stepRivalSabotage(state: GameState, gameTimeMs: number): StepResult {
+  const r = CONFIG.rival
+  if (state.turn < r.appearsOnTurn) return { state, events: [] }
+
+  const eligible = state.fleet.filter(v => !v.isImpounded)
+  if (eligible.length < 2) return { state, events: [] }  // never strand the player's only vehicle
+
+  const chance = r.chancePerWeek
+  if (Math.random() >= chance) return { state, events: [] }
+
+  const target = eligible[Math.floor(Math.random() * eligible.length)]!
+  const ransom  = Math.round(target.purchasePrice * r.ransomFraction)
+
+  return {
+    state: {
+      ...state,
+      fleet: state.fleet.map(v =>
+        v.id === target.id
+          ? { ...v, isImpounded: true, impoundFine: ransom, impoundExpiresOnTurn: state.turn + r.impoundWeeks }
+          : v,
+      ),
+    },
+    events: [makeEvent(gameTimeMs,
+      `Rival operation: ${target.name} sabotaged. Pay $${ransom.toLocaleString()} within ${r.impoundWeeks} weeks to recover.`,
+      'danger',
+    )],
+  }
+}
+
+// ── Step 9b: Repair orphaned recurring contracts ─────────────────────────────
+// Safety net: if a recurring contract has an assigned vehicle but no active
+// shipment (e.g. state race between arrival resolution and weekly tick),
+// redispatch the vehicle so the contract doesn't get stuck.
+
+function stepRepairRecurring(state: GameState, gameTimeMs: number): StepResult {
+  const events: ReturnType<typeof makeEvent>[] = []
+  let { shipmentsInTransit, fleet, contracts } = state
+  let changed = false
+
+  for (const c of contracts) {
+    if (!c.isRecurring || !c.isAssigned || c.legs.length !== 1) continue
+    const leg = c.legs[0]!
+    // Orphaned: has vehicle, no shipment, not marked complete
+    if (leg.shipmentIds.length > 0 || leg.completedAt !== null || leg.assignedVehicleIds.length === 0) continue
+
+    const vehicleId = leg.assignedVehicleIds[0]!
+    const vehicle = fleet.find(v => v.id === vehicleId)
+    if (!vehicle || vehicle.isImpounded) continue
+
+    const route = state.routes.find(r =>
+      r.status === 'open' && r.origin === leg.origin && r.destination === leg.destination,
+    )
+    if (!route) continue
+    const travelDays = route.travelDays[vehicle.type]
+    if (!travelDays) continue
+
+    const newId = `ship_repair_${gameTimeMs}_${c.id}`
+    const newShipment: ShipmentInTransit = {
+      id: newId,
+      contractId: c.id,
+      vehicleId,
+      routeId: route.id,
+      legIndex: 0,
+      turnsRemaining: travelDays,
+      totalTurns: travelDays,
+      isIllicit: c.isIllicit,
+      isFrozen: false,
+      departureTimeMs: gameTimeMs,
+      frozenDurationMs: 0,
+    }
+
+    shipmentsInTransit = [...shipmentsInTransit, newShipment]
+    contracts = contracts.map(ct =>
+      ct.id === c.id
+        ? { ...ct, legs: [{ ...leg, shipmentIds: [newId] }] }
+        : ct,
+    )
+    fleet = fleet.map(v =>
+      v.id === vehicleId
+        ? { ...v, isAssigned: true, currentShipmentId: newId }
+        : v,
+    )
+    changed = true
+  }
+
+  if (!changed) return { state, events }
+  return { state: { ...state, shipmentsInTransit, fleet, contracts }, events }
+}
+
+// ── Step 9c: Advance turn counters and expire flags ───────────────────────────
 
 function stepEndTurn(state: GameState, gameTimeMs: number): StepResult {
-  const events = []
+  const events: ReturnType<typeof makeEvent>[] = []
 
   const updatedContracts = state.contracts.map(c => ({
     ...c,
@@ -188,6 +291,7 @@ function stepEndTurn(state: GameState, gameTimeMs: number): StepResult {
     state: {
       ...state,
       turn: state.turn + 1,
+      turnsWithoutIllicitActivity: state.turnsWithoutIllicitActivity + 1,
       contracts: updatedContracts,
       routes: updatedRoutes,
       weatherEvents: updatedWeather,
@@ -205,10 +309,11 @@ export function resolveWeeklyTick(
 ): { state: GameState; summary: WeeklySummary } {
   if (state.phase === 'game_over') return { state, summary: buildEmptySummary(weekNumber) }
 
-  const cashStart    = state.cash
-  const repStart     = state.reputation
-  const heatStart    = state.globalHeat
-  const openAtStart  = new Set(state.routes.filter(r => r.status === 'open').map(r => r.id))
+  const cashStart       = state.cash
+  const repStart        = state.reputation
+  const heatStart       = state.globalHeat
+  const openAtStart     = new Set(state.routes.filter(r => r.status === 'open').map(r => r.id))
+  const maintenanceCost = getMaintenanceCost(state)
 
   const steps = [
     (s: GameState) => stepForecast(s, gameTimeMs),
@@ -219,7 +324,10 @@ export function resolveWeeklyTick(
     (s: GameState) => stepMoveInterpol(s, gameTimeMs),
     (s: GameState) => stepDecayRouteHeat(s),
     (s: GameState) => stepDecayGlobalHeat(s),
+    (s: GameState) => stepDecayReputation(s, gameTimeMs),
     (s: GameState) => stepExpireImpounds(s, gameTimeMs),
+    (s: GameState) => stepRivalSabotage(s, gameTimeMs),
+    (s: GameState) => stepRepairRecurring(s, gameTimeMs),
     (s: GameState) => stepEndTurn(s, gameTimeMs),
   ]
 
@@ -237,6 +345,7 @@ export function resolveWeeklyTick(
   const summary: WeeklySummary = {
     weekNumber,
     fixedCosts,
+    maintenanceCost,
     deliveryIncome:      ws.deliveryIncome,
     netCashChange:       ws.deliveryIncome - fixedCosts,
     repChange:           current.reputation - repStart,
@@ -251,17 +360,19 @@ export function resolveWeeklyTick(
 
   current = {
     ...current,
+    // Rolling 52-week (1-year) profit history for the P&L chart
+    profitHistory: [...(current.profitHistory ?? []), summary.netCashChange].slice(-52),
     weeklyStats: { deliveryIncome: 0, contractsCompleted: 0, busts: 0, repFromDeliveries: 0, heatFromDeliveries: 0, deliveries: [] },
     lastWeeklySummary: summary,
   }
   current = appendEvents(current, allEvents)
-  current = checkWinLose(current)
+  current = checkWinLose(current, gameTimeMs)
 
   return { state: current, summary }
 }
 
 function buildEmptySummary(weekNumber: number): WeeklySummary {
-  return { weekNumber, fixedCosts: 0, deliveryIncome: 0, netCashChange: 0, repChange: 0, heatChange: 0, contractsCompleted: 0, busts: 0, routesOpened: [], completedDeliveries: [] }
+  return { weekNumber, fixedCosts: 0, maintenanceCost: 0, deliveryIncome: 0, netCashChange: 0, repChange: 0, heatChange: 0, contractsCompleted: 0, busts: 0, routesOpened: [], completedDeliveries: [] }
 }
 
 // Re-export for callers that used to import checkWinLose from turnEngine

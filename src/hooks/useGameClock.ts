@@ -37,23 +37,32 @@ export function useGameClock() {
   }, [])
 
   const checkArrivals = useCallback((now: number) => {
-    const { gameState, resolveArrival } = useGameStore.getState()
-    const frozenRouteIds = new Set(
-      gameState.weatherEvents
-        .filter(e => !e.isForecast)
-        .flatMap(e => e.affectedRouteIds),
-    )
-    const skillSpeedMult = gameState.unlockedSkills.includes('logistics_2')
-      ? CONFIG.skills.effects.logistics_2.transitTimeMultiplier
-      : 1.0
     const eu = CONFIG.vehicleUpgrades.effects.engine
-    for (const s of gameState.shipmentsInTransit) {
-      if (frozenRouteIds.has(s.routeId)) continue  // held up by active weather
-      const engineTier = gameState.fleet.find(v => v.id === s.vehicleId)?.upgrades.engine ?? 0
-      const engineMult = engineTier === 2 ? eu.tier2TransitMultiplier : engineTier === 1 ? eu.tier1TransitMultiplier : 1.0
-      const arrivalTime = s.departureTimeMs + s.totalTurns * DAY_MS * skillSpeedMult * engineMult + s.frozenDurationMs
-      if (now >= arrivalTime) {
-        resolveArrival(s.id, now)
+    // Re-read state after each resolution so recurring redispatches are visible
+    // to subsequent iterations and to the weekly tick that follows.
+    let resolved = true
+    while (resolved) {
+      resolved = false
+      const { gameState, resolveArrival } = useGameStore.getState()
+      const frozenRouteIds = new Set(
+        gameState.weatherEvents
+          .filter(e => !e.isForecast)
+          .flatMap(e => e.affectedRouteIds),
+      )
+      const skillSpeedMult = gameState.unlockedSkills.includes('logistics_2')
+        ? CONFIG.skills.effects.logistics_2.transitTimeMultiplier
+        : 1.0
+      for (const s of gameState.shipmentsInTransit) {
+        if (frozenRouteIds.has(s.routeId)) continue
+        const vehicle = gameState.fleet.find(v => v.id === s.vehicleId)
+        const engineTier = vehicle?.upgrades.engine ?? 0
+        const engineMult = engineTier === 2 ? eu.tier2TransitMultiplier : engineTier === 1 ? eu.tier1TransitMultiplier : 1.0
+        const arrivalTime = s.departureTimeMs + s.totalTurns * DAY_MS * skillSpeedMult * engineMult + s.frozenDurationMs
+        if (now >= arrivalTime) {
+          resolveArrival(s.id, now)
+          resolved = true
+          break // re-read state from scratch
+        }
       }
     }
   }, [])

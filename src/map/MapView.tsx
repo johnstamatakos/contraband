@@ -8,8 +8,10 @@ import type { VehicleFilter } from './routeLayer'
 import { RoutePanel } from '../ui/RoutePanel'
 import type { VehicleType } from '../engine/gameState'
 import { VEHICLE_ICON, VEHICLE_LABEL } from '../ui/vehicleConstants'
-import { useGameStore } from '../store/gameStore'
+import { useGameStore, currentGameTimeMs } from '../store/gameStore'
 import { CITY_MAP } from '../data/cities'
+import { CONFIG } from '../engine/config'
+import { formatTimeRemaining } from '../utils/time'
 
 type HoverInfo = { type: 'vehicle'; id: string; x: number; y: number } | { type: 'storm'; id: string; x: number; y: number } | null
 
@@ -28,6 +30,11 @@ function MapTooltip({ info }: { info: { type: string; id: string; x: number; y: 
     const destName = CITY_MAP.get(contract.destination)?.name ?? contract.destination
     const activeUpgrades = (['cargo', 'engine', 'concealment'] as const).filter(u => vehicle.upgrades[u] > 0)
 
+    const cu = CONFIG.vehicleUpgrades.effects.cargo
+    const cargoTier = vehicle.upgrades.cargo
+    const cargoBonus = cargoTier === 2 ? cu.tier2PayoutBonus : cargoTier === 1 ? cu.tier1PayoutBonus : 0
+    const effectivePayout = cargoBonus > 0 ? Math.round(contract.payout * (1 + cargoBonus)) : contract.payout
+
     content = (
       <div>
         <div className="font-semibold text-white mb-1">{vehicle.name}</div>
@@ -38,7 +45,10 @@ function MapTooltip({ info }: { info: { type: string; id: string; x: number; y: 
             {contract.isIllicit ? 'ILLICIT' : 'LEGIT'}
           </span>
           <span className="text-emerald-400 font-semibold">
-            +${contract.payout.toLocaleString()}{contract.isRecurring ? '/run' : ''}
+            +${effectivePayout.toLocaleString()}{contract.isRecurring ? '/run' : ''}
+            {cargoBonus > 0 && (
+              <span className="text-emerald-700 font-normal ml-1">+{Math.round(cargoBonus * 100)}%</span>
+            )}
           </span>
         </div>
         {activeUpgrades.length > 0 && (
@@ -65,13 +75,18 @@ function MapTooltip({ info }: { info: { type: string; id: string; x: number; y: 
       monsoon: 'Monsoon',
     }
 
+    // For active storms use clearAtMs (the real timer); for forecasts show days until active
+    const timeStr = !event.isForecast && event.clearAtMs !== null
+      ? `${formatTimeRemaining(event.clearAtMs - currentGameTimeMs)} remaining`
+      : `activates next week, lasts ~${CONFIG.weather.activeDurationDays} days`
+
     content = (
       <div>
         <div className="font-semibold text-white mb-1">{typeLabel[event.type] ?? event.type}</div>
         <div className={event.isForecast ? 'text-yellow-400' : 'text-red-400'}>
-          {event.isForecast ? 'Incoming' : 'Active'}
+          {event.isForecast ? 'Incoming' : 'Active — blocking route'}
         </div>
-        <div className="text-gray-500">{event.turnsRemaining} week{event.turnsRemaining !== 1 ? 's' : ''} remaining</div>
+        <div className="text-gray-500 mt-0.5">{timeStr}</div>
         <div className="text-gray-600 mt-1">Affects {event.affectedRouteIds.length} route{event.affectedRouteIds.length !== 1 ? 's' : ''}</div>
       </div>
     )

@@ -7,7 +7,6 @@ export type RouteId = string
 export type VehicleId = string
 export type ContractId = string
 export type ShipmentId = string
-export type ContactId = string
 export type WeatherEventId = string
 
 // ─── Enumerations ────────────────────────────────────────────────────────────
@@ -16,15 +15,6 @@ export type VehicleType = 'truck' | 'plane' | 'ship'
 export type RouteTier = 'domestic' | 'regional' | 'international' | 'long_haul'
 export type RouteStatus = 'open' | 'pending' | 'closed'
 export type RiskLevel = 'LOW' | 'MED' | 'HIGH'
-export type ContactType =
-  | 'customs_insider'
-  | 'port_fixer'
-  | 'informant'
-  | 'fence'
-  | 'underworld_broker'
-  | 'freight_broker'
-  | 'port_agent'
-  | 'airline_partner'
 export type WeatherType =
   | 'thunderstorm'
   | 'hurricane'
@@ -50,13 +40,16 @@ export interface City {
   y?: number
 }
 
+export type UpgradeType = 'cargo' | 'engine' | 'concealment' | 'range'
+
 export interface VehicleUpgrades {
   cargo: 0 | 1 | 2
   engine: 0 | 1 | 2
   concealment: 0 | 1 | 2
+  range: 0 | 1 | 2
 }
 
-export const DEFAULT_UPGRADES: VehicleUpgrades = { cargo: 0, engine: 0, concealment: 0 }
+export const DEFAULT_UPGRADES: VehicleUpgrades = { cargo: 0, engine: 0, concealment: 0, range: 0 }
 
 export interface Vehicle {
   id: VehicleId
@@ -77,7 +70,7 @@ export interface Vehicle {
   impoundExpiresOnTurn: number | null // turn on which the vehicle is permanently lost
 }
 
-export type VehicleSpec = Omit<Vehicle, 'id' | 'name' | 'isAssigned' | 'currentShipmentId' | 'type' | 'upgrades'>
+export type VehicleSpec = Omit<Vehicle, 'id' | 'name' | 'isAssigned' | 'currentShipmentId' | 'type' | 'upgrades' | 'isImpounded' | 'impoundFine' | 'impoundExpiresOnTurn'>
 
 export const VEHICLE_SPECS: Record<VehicleType, VehicleSpec> = CONFIG.vehicles
 
@@ -103,10 +96,22 @@ export interface Route {
 
 export const ROUTE_COSTS: Record<RouteTier, { establish: number; illicit: number }> = CONFIG.routes.costs
 
-export interface Contract {
-  id: ContractId
+// A single leg in a multi-leg contract (or the only leg in a simple contract)
+export interface ContractLeg {
   origin: CityId
   destination: CityId
+  assignedVehicleIds: VehicleId[]  // empty = not yet assigned; convoy has multiple
+  shipmentIds: ShipmentId[]        // active shipment IDs for this leg
+  completedAt: number | null       // turn when this leg completed
+}
+
+// Upgrade requirements that vehicles must meet to take a contract
+export type VehicleRequirements = Partial<Record<UpgradeType, 1 | 2>>
+
+export interface Contract {
+  id: ContractId
+  origin: CityId        // display: first leg origin
+  destination: CityId   // display: last leg destination
   cargoType: string
   volume: number
   payout: number
@@ -115,12 +120,17 @@ export interface Contract {
   riskLevel: RiskLevel
   tier: RouteTier
   isIllicit: boolean
-  isAssigned: boolean
-  assignedVehicleId: VehicleId | null
+  isAssigned: boolean     // true when all legs have all required vehicles assigned
+  assignedVehicleId: VehicleId | null  // kept for recurring compat = legs[0].assignedVehicleIds[0]
   expiresOnTurn: number
-  isRecurring: boolean    // true = multi-run supply contract
+  isRecurring: boolean    // true = multi-run supply contract (single-leg only)
   totalRuns: number       // total deliveries (1 for regular contracts)
   runsCompleted: number   // increments after each successful delivery
+  // Complex contract fields
+  legs: ContractLeg[]             // always present; single contracts have legs.length === 1
+  requiredVehicleCount: number    // vehicles needed per leg (1 = normal, 2+ = convoy)
+  vehicleRequirements: VehicleRequirements  // upgrade gates applied to all assigned vehicles
+  requiredSkills: string[]        // skills player must have to assign this contract
 }
 
 export interface ShipmentInTransit {
@@ -128,6 +138,7 @@ export interface ShipmentInTransit {
   contractId: ContractId
   vehicleId: VehicleId
   routeId: RouteId
+  legIndex: number        // which leg of the contract this shipment belongs to (0 for single-leg)
   turnsRemaining: number  // display only; delivery triggered by departureTimeMs
   totalTurns: number
   isIllicit: boolean
@@ -146,23 +157,14 @@ export interface WeatherEvent {
   clearAtMs: number | null  // real-time ms when the active storm expires
 }
 
-export interface Contact {
-  id: ContactId
-  type: ContactType
-  cityId: CityId
-  costPerTurn: number
-  isHired: boolean
-  isAvailable: boolean // false if burned after bust
-}
-
-export const CONTACT_COSTS: Record<ContactType, number> = CONFIG.contacts.costPerTurn
-
 /** Shared shape for both threat entities. */
 export interface ThreatEntity {
   currentCityId: CityId | null
   appearsOnTurn: number
   probableNextCityId: CityId | null
   isTrackedByInformant: boolean
+  /** Interpol only: up to 2 extra simultaneous positions outside North America. */
+  additionalCityIds: CityId[]
 }
 /** Domestic / regional threat — appears early, lighter penalties. */
 export type Inspector = ThreatEntity
@@ -180,6 +182,20 @@ export interface LiveEvent {
 
 // ─── Weekly summary (shown in WeeklyReport modal) ────────────────────────────
 
+/** Per-factor breakdown returned by detectionChanceWithBreakdown. */
+export interface DetectionBreakdown {
+  base: number
+  routeHeat: number
+  globalHeat: number
+  consecutiveRuns: number
+  threatBonus: number          // inspector/interpol bonus (after shadow_3 multiplier)
+  skillsReduction: number      // shadow_1 flat reduction
+  concealmentReduction: number // vehicle concealment upgrade
+  legitCover: number           // plausible deniability from legit recurring shipments
+  contactsReduction: number    // customs_insider on intl/long-haul
+  final: number                // clamped total probability
+}
+
 export interface DeliveryRecord {
   origin: string        // city display name
   destination: string   // city display name
@@ -187,18 +203,21 @@ export interface DeliveryRecord {
   isIllicit: boolean
   cargoType: string
   wasBust: boolean
+  risk: number | null   // detection probability at time of delivery (null for legit / piracy)
+  riskBreakdown: DetectionBreakdown | null
 }
 
 export interface WeeklySummary {
   weekNumber: number
-  fixedCosts: number        // cash spent on maintenance + contacts this week
-  deliveryIncome: number    // cash earned from deliveries during the week
-  netCashChange: number     // total cash delta (deliveries - fixed costs)
-  repChange: number         // net rep delta
-  heatChange: number        // net global heat delta
+  fixedCosts: number          // total cash spent on maintenance this week
+  maintenanceCost: number     // fleet maintenance cost
+  deliveryIncome: number      // cash earned from deliveries during the week
+  netCashChange: number       // total cash delta (deliveries - fixed costs)
+  repChange: number           // net rep delta
+  heatChange: number          // net global heat delta
   contractsCompleted: number
   busts: number
-  routesOpened: string[]    // e.g. "Chicago → New York"
+  routesOpened: string[]      // e.g. "Chicago → New York"
   completedDeliveries: DeliveryRecord[]
 }
 
@@ -225,7 +244,6 @@ export interface GameState {
   contracts: Contract[]
   shipmentsInTransit: ShipmentInTransit[]
   weatherEvents: WeatherEvent[]
-  contacts: Contact[]
   inspector: Inspector
   interpol: Interpol
   events: LiveEvent[]           // live event feed, capped at 50
@@ -243,6 +261,14 @@ export interface GameState {
   gameVersion: number
   // Skill tree: ids of unlocked skills (e.g. 'shadow_1', 'logistics_2')
   unlockedSkills: string[]
+  // Set true after first illicit arrival (caught or cleared) — gates rep decay
+  hasCompletedFirstIllicit: boolean
+  // Rolling weekly net-cash history (most recent last); used for the P&L chart
+  profitHistory: number[]
+  // Turn when player last used "Lay Low" heat reduction
+  lastLayLowTurn: number
+  // Route IDs of recently completed illicit contracts (cleared per generation cycle)
+  recentIllicitCompletions: string[]
 }
 
 // ─── Derived values ────────────────────────────────────────────────────────────
@@ -261,12 +287,8 @@ export function getMaintenanceCost(state: GameState): number {
   return Math.round(base * multiplier)
 }
 
-export function getContactsCost(state: GameState): number {
-  return state.contacts.filter(c => c.isHired).reduce((sum, c) => sum + c.costPerTurn, 0)
-}
-
 export function getFixedCosts(state: GameState): number {
-  return getMaintenanceCost(state) + getContactsCost(state)
+  return getMaintenanceCost(state)
 }
 
 // ─── Route establishment helpers ───────────────────────────────────────────────

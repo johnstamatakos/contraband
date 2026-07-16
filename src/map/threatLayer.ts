@@ -26,18 +26,33 @@ export function drawThreats(
   interpolProbableNext: string | null = null,
   showProbableNext: boolean = false,
   interpolAdjacentCities: string[] = [],
+  interpolAdditionalCityIds: string[] = [],
 ): void {
   g.clear()
 
   // ── Interpol adjacent cities — faint rings drawn first (behind main ring) ──
   for (const cityId of interpolAdjacentCities) {
     if (cityId === interpolCityId) continue  // already drawn as main ring
+    if (interpolAdditionalCityIds.includes(cityId)) continue  // drawn below
     const c = cityMap.get(cityId)
     if (!c) continue
     const r = 7 + pulse * 2
     const a = 0.18 + pulse * 0.12
     g.circle(c.px, c.py, r)
     g.stroke({ color: 0x3b82f6, width: 1.5, alpha: a })
+  }
+
+  // ── Interpol additional positions — slightly smaller blue rings ─────────────
+  for (const cityId of interpolAdditionalCityIds) {
+    if (cityId === interpolCityId) continue
+    const city = cityMap.get(cityId)
+    if (!city) continue
+    const radius = 10 + pulse * 3
+    const alpha  = 0.70 - pulse * 0.25
+    g.circle(city.px, city.py, radius)
+    g.stroke({ color: 0x3b82f6, width: 2, alpha })
+    g.circle(city.px, city.py, 3.5)
+    g.fill({ color: 0x3b82f6, alpha: 0.75 })
   }
 
   // ── Inspector — red ────────────────────────────────────────────────────────
@@ -65,7 +80,7 @@ export function drawThreats(
     }
   }
 
-  // ── Interpol — blue ────────────────────────────────────────────────────────
+  // ── Interpol primary — blue (larger ring) ──────────────────────────────────
   if (interpolCityId) {
     const city = cityMap.get(interpolCityId)
     if (city) {

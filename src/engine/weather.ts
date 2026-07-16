@@ -28,7 +28,7 @@ export function maybeGenerateWeather(state: GameState): WeatherEvent | null {
     type: WEATHER_TYPES[Math.floor(Math.random() * WEATHER_TYPES.length)]!,
     affectedRouteIds: affected.map(r => r.id),
     affectedCityIds: [...new Set(affected.flatMap(r => [r.origin, r.destination]))],
-    turnsRemaining: 2, // forecast this week, active for up to 1 week (clearAtMs cuts it short)
+    turnsRemaining: 4, // forecast this week, active for ~3 weeks (clearAtMs handles real-time expiry)
     isForecast: true,
     clearAtMs: null,
   }

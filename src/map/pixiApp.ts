@@ -11,7 +11,7 @@ import { buildVehicleLayer, drawVehicles } from './vehicleLayer'
 import { buildThreatLayer, drawThreats } from './threatLayer'
 import { buildWeatherLayer, drawWeatherClouds } from './weatherLayer'
 import { useGameStore } from '../store/gameStore'
-import { WEEK_MS, DAY_MS } from '../engine/constants'
+import { DAY_MS } from '../engine/constants'
 import { CONFIG } from '../engine/config'
 import { ROUTE_VISUAL_WAYPOINTS } from '../data/routeWaypoints'
 
@@ -95,6 +95,7 @@ export async function initPixiApp(
   let currentInspectorProbNext   = useGameStore.getState().gameState.inspector.probableNextCityId
   let currentInterpolCity        = useGameStore.getState().gameState.interpol.currentCityId
   let currentInterpolProbNext    = useGameStore.getState().gameState.interpol.probableNextCityId
+  let currentInterpolAdditional  = useGameStore.getState().gameState.interpol.additionalCityIds
   let currentWeatherEvents = useGameStore.getState().gameState.weatherEvents
   let currentUnlockedSkills = useGameStore.getState().gameState.unlockedSkills
   let currentFilter: VehicleFilter = ALL_VEHICLES_VISIBLE
@@ -159,14 +160,28 @@ export async function initPixiApp(
       const engineTier = currentFleet.find(v => v.id === s.vehicleId)?.upgrades.engine ?? 0
       const engineMult = engineTier === 2 ? eu.tier2TransitMultiplier : engineTier === 1 ? eu.tier1TransitMultiplier : 1.0
       const arrivalTime = s.departureTimeMs + s.totalTurns * DAY_MS * skillSpeedMult * engineMult + s.frozenDurationMs
-      // Freeze visual progress when route has active weather
-      const isFrozen = currentWeatherEvents.some(e => !e.isForecast && e.affectedRouteIds.includes(s.routeId))
       const duration = arrivalTime - s.departureTimeMs
-      const rawProgress = duration > 0
-        ? Math.min(1, Math.max(0, (now - s.departureTimeMs) / duration))
-        : 1
-      // Cap at 0.95 while frozen so the vehicle visibly stalls before the destination
-      progressMap.set(s.id, isFrozen ? Math.min(rawProgress, 0.95) : rawProgress)
+
+      // Find the active (non-forecast) storm blocking this route, if any
+      const blockingStorm = currentWeatherEvents.find(e => !e.isForecast && e.affectedRouteIds.includes(s.routeId))
+
+      let progress: number
+      if (blockingStorm) {
+        // Freeze the vehicle at its exact position when the storm became active
+        const stormActiveSinceMs = blockingStorm.clearAtMs != null
+          ? blockingStorm.clearAtMs - DAY_MS * CONFIG.weather.activeDurationDays
+          : now
+        const freezeStart = Math.max(s.departureTimeMs, stormActiveSinceMs)
+        // Progress at freeze time (exclude any frozenDurationMs already accumulated)
+        progress = duration > 0
+          ? Math.min(0.98, Math.max(0, (freezeStart - s.departureTimeMs) / duration))
+          : 0.98
+      } else {
+        progress = duration > 0
+          ? Math.min(1, Math.max(0, (now - s.departureTimeMs) / duration))
+          : 1
+      }
+      progressMap.set(s.id, progress)
     }
 
     const pulse = (Math.sin(pulseTimer * 0.002) + 1) / 2
@@ -191,7 +206,7 @@ export async function initPixiApp(
             .filter(c => c !== currentInterpolCity),
         )]
       : []
-    drawThreats(threatGraphics, currentInspectorCity, currentInterpolCity, cityHandle.cityMap, pulse, currentInspectorProbNext, currentInterpolProbNext, showProbableNext, interpolAdjacentCities)
+    drawThreats(threatGraphics, currentInspectorCity, currentInterpolCity, cityHandle.cityMap, pulse, currentInspectorProbNext, currentInterpolProbNext, showProbableNext, interpolAdjacentCities, currentInterpolAdditional)
     drawWeatherClouds(weatherGraphics, currentWeatherEvents, currentRoutes, cityHandle.cityMap, pulse, pulseTimer)
   })
 
@@ -203,6 +218,7 @@ export async function initPixiApp(
     currentInspectorProbNext = state.gameState.inspector.probableNextCityId
     currentInterpolCity      = state.gameState.interpol.currentCityId
     currentInterpolProbNext  = state.gameState.interpol.probableNextCityId
+    currentInterpolAdditional = state.gameState.interpol.additionalCityIds
     currentWeatherEvents = state.gameState.weatherEvents
     currentUnlockedSkills = state.gameState.unlockedSkills
     updateStormPositions()

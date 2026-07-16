@@ -4,12 +4,12 @@ import { getNetWorth } from '../engine/gameState'
 const WIN_STATE_MESSAGES: Record<string, { title: string; subtitle: string; color: string }> = {
   win_networth: {
     title: 'YOU WIN',
-    subtitle: 'Net worth threshold reached. The operation is untouchable.',
+    subtitle: '$2M net worth reached. The operation is untouchable.',
     color: 'text-yellow-400',
   },
   win_reputation: {
     title: 'YOU WIN',
-    subtitle: 'Reputation at 80. You are a legend in the underworld.',
+    subtitle: 'Reputation at 100. You are a legend in the underworld.',
     color: 'text-blue-400',
   },
   lose_bankrupt: {
@@ -44,8 +44,8 @@ export function GameOver() {
 
         <div className="space-y-2 mb-8 font-mono text-sm">
           <div className="flex justify-between">
-            <span className="text-gray-500">Turns survived</span>
-            <span className="text-white">{turn - 1}</span>
+            <span className="text-gray-500">Time played</span>
+            <span className="text-white">{turn - 1} week{turn - 1 !== 1 ? 's' : ''} ({(turn - 1) * 7} days)</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Final cash</span>

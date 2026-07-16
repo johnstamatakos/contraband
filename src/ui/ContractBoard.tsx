@@ -1,268 +1,402 @@
-import { useState } from 'react'
-import { useGameStore } from '../store/gameStore'
-import type { Contract } from '../engine/gameState'
-import { CITY_MAP } from '../data/cities'
-import { CONFIG } from '../engine/config'
+import { useState, useEffect } from 'react'
+import { useGameStore, currentGameTimeMs } from '../store/gameStore'
+import type { Contract, VehicleType } from '../engine/gameState'
+import { CITY_MAP, getCityName } from '../data/cities'
 import { VEHICLE_ICON } from './vehicleConstants'
-const RISK_CLS: Record<'LOW' | 'MED' | 'HIGH', string> = {
-  LOW: 'text-green-400 bg-green-900',
-  MED: 'text-yellow-400 bg-yellow-900',
-  HIGH: 'text-red-400 bg-red-900',
-}
+import { ContractModal } from './ContractModal'
+import { CONFIG } from '../engine/config'
+import { DAY_MS } from '../engine/constants'
 
+type SubNav = 'available' | 'in-transit'
 type Filter = 'all' | 'legit' | 'illicit'
 
-// ─── Per-contract card ────────────────────────────────────────────────────────
+const UPGRADE_ICON: Record<string, string> = {
+  range: '⛽', concealment: '🫥', cargo: '📦', engine: '⚙️',
+}
 
-function ContractCard({ contract }: { contract: Contract }) {
-  const { gameState, assignVehicle, cancelRecurringContract } = useGameStore()
-  const [picking, setPicking] = useState(false)
+// ─── Available contract card ──────────────────────────────────────────────────
+
+function AvailableCard({ contract, onOpen, onDecline }: {
+  contract: Contract
+  onOpen: () => void
+  onDecline: () => void
+}) {
+  const { gameState } = useGameStore()
 
   const originCity = CITY_MAP.get(contract.origin)
-  const destCity = CITY_MAP.get(contract.destination)
+  const destCity   = CITY_MAP.get(contract.destination)
   if (!originCity || !destCity) return null
 
-  // In-transit info
-  const shipment = gameState.shipmentsInTransit.find(s => s.contractId === contract.id)
-  const assignedVehicle = shipment ? gameState.fleet.find(v => v.id === shipment.vehicleId) : null
-
-  // Find the open route for this contract
-  const route = gameState.routes.find(r =>
+  // Find feasible vehicle types: route allows them AND they can carry the volume
+  const primaryRoute = gameState.routes.find(r =>
     r.status === 'open' &&
-    r.origin === contract.origin &&
-    r.destination === contract.destination,
+    r.origin === contract.legs[0]!.origin &&
+    r.destination === contract.legs[0]!.destination,
   )
-
-  // Eligible vehicles: idle, allowed on route, enough capacity
-  const eligibleVehicles = route
-    ? gameState.fleet.filter(v =>
-        !v.isAssigned &&
-        !v.isImpounded &&
-        route.allowedVehicles.includes(v.type) &&
-        v.capacity >= contract.volume &&
-        (!contract.isIllicit || route.illicitLayerActive),
-      )
+  const perVehicleVolume = contract.volume
+  const feasibleVehicles: VehicleType[] = primaryRoute
+    ? primaryRoute.allowedVehicles.filter(vt => CONFIG.vehicles[vt].capacity >= perVehicleVolume)
     : []
 
-  const canAssign = !contract.isAssigned && eligibleVehicles.length > 0
-
-  // Reason why assignment is blocked
-  let blockedReason: string | null = null
-  if (!contract.isAssigned) {
-    if (!route) {
-      blockedReason = 'Route not established'
-    } else if (contract.isIllicit && route.flaggedTurnsRemaining > 0) {
-      const authority = (route.tier === 'domestic' || route.tier === 'regional') ? 'Inspector' : 'Interpol'
-      blockedReason = `${authority} investigation (${route.flaggedTurnsRemaining}w remaining)`
-    } else if (contract.isIllicit && !route.illicitLayerActive) {
-      blockedReason = 'Activate illicit layer first'
-    } else if (eligibleVehicles.length === 0) {
-      const anyIdle = gameState.fleet.filter(v =>
-        !v.isAssigned && route.allowedVehicles.includes(v.type),
-      )
-      blockedReason = anyIdle.length === 0
-        ? 'No idle vehicles for this route'
-        : 'All idle vehicles are too small'
-    }
-  }
-
-  const handleAssign = (vehicleId: string) => {
-    assignVehicle(contract.id, vehicleId)
-    setPicking(false)
-  }
-
+  const isMultiLeg   = contract.legs.length > 1
   const isIndefinite = contract.isRecurring && contract.totalRuns >= 999
+  const hasReqs      = Object.keys(contract.vehicleRequirements).length > 0
+  const skillsLocked = contract.requiredSkills.some(s => !gameState.unlockedSkills.includes(s))
 
-  // Effective payout with cargo upgrade bonus applied
-  const cu = CONFIG.vehicleUpgrades.effects.cargo
-  const cargoTier = assignedVehicle?.upgrades.cargo ?? 0
-  const cargoBonus = cargoTier === 2 ? cu.tier2PayoutBonus : cargoTier === 1 ? cu.tier1PayoutBonus : 0
-  const effectivePayout = cargoBonus > 0 ? Math.round(contract.payout * (1 + cargoBonus)) : contract.payout
+  const deadlineUrgent = !isIndefinite && contract.deadline <= 1
+  const deadlineWarn   = !isIndefinite && contract.deadline <= 2
 
   return (
-    <div
-      className={`border rounded-lg p-2.5 space-y-2 ${
+    <div className={`relative rounded-lg border transition-colors ${
+      contract.isIllicit
+        ? 'border-red-900/60 bg-gray-950 hover:bg-gray-900 hover:border-red-800/60'
+        : 'border-gray-700/60 bg-gray-900 hover:bg-gray-800 hover:border-gray-600'
+    }`}>
+      {/* Card body — click to open modal */}
+      <button onClick={onOpen} className="w-full text-left px-2.5 pt-2.5 pb-2 pr-8 space-y-1.5">
+
+        {/* Row 1: route + type badge + payout */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-mono text-sm font-semibold text-white truncate">
+            {originCity.name} → {destCity.name}
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isMultiLeg && (
+              <span className="text-xs font-mono px-1 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-900">{contract.legs.length}-LEG</span>
+            )}
+            <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+              contract.isIllicit ? 'bg-red-900/80 text-red-300' : 'bg-gray-800 text-gray-400'
+            }`}>
+              {contract.isIllicit ? 'ILLICIT' : 'LEGIT'}
+            </span>
+            <span className="text-sm font-mono font-bold text-emerald-400">
+              ${contract.payout.toLocaleString()}{contract.isRecurring ? '/run' : ''}
+            </span>
+          </div>
+        </div>
+
+        {/* Row 2: vehicle icons · deadline · recurring */}
+        <div className="flex items-center gap-2 text-xs font-mono">
+          <span className="text-gray-400">
+            {feasibleVehicles.map(v => VEHICLE_ICON[v]).join(' ') || '—'}
+          </span>
+          <span className="text-gray-700">·</span>
+          <span className={deadlineUrgent ? 'text-red-400' : deadlineWarn ? 'text-yellow-500' : 'text-gray-500'}>
+            {isIndefinite ? '∞' : `${contract.deadline}w`}
+          </span>
+          {isMultiLeg && (
+            <>
+              <span className="text-gray-700">·</span>
+              <span className="text-gray-500">{contract.legs.length} legs</span>
+            </>
+          )}
+          {contract.isRecurring && (
+            <>
+              <span className="text-gray-700">·</span>
+              <span className="text-violet-400">∞ recurring</span>
+            </>
+          )}
+        </div>
+
+        {/* Row 3: upgrade/skill requirements (only when present) */}
+        {(hasReqs || skillsLocked) && (
+          <div className="text-xs font-mono">
+            {skillsLocked
+              ? <span className="text-red-500">🔒 Skill required</span>
+              : <span className="text-amber-600">
+                  {Object.keys(contract.vehicleRequirements).map(k => UPGRADE_ICON[k] ?? '').join(' ')} Upgrade required
+                </span>
+            }
+          </div>
+        )}
+      </button>
+
+      {/* 1-click dismiss */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onDecline() }}
+        title="Decline"
+        className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded text-gray-700 hover:text-gray-300 hover:bg-gray-700 transition-colors text-xs leading-none"
+      >
+        ✕
+      </button>
+    </div>
+  )
+}
+
+// ─── In Transit progress card ─────────────────────────────────────────────────
+
+function InTransitCard({ contract, now, onOpen }: {
+  contract: Contract
+  now: number
+  onOpen: () => void
+}) {
+  const { gameState } = useGameStore()
+  const eu = CONFIG.vehicleUpgrades.effects.engine
+  const skillSpeedMult = gameState.unlockedSkills.includes('logistics_2')
+    ? CONFIG.skills.effects.logistics_2.transitTimeMultiplier
+    : 1.0
+
+  const isMultiLeg   = contract.legs.length > 1
+  const isIndefinite = contract.isRecurring && contract.totalRuns >= 999
+
+  const legDisplays = contract.legs.map((leg, i) => {
+    const isComplete = leg.completedAt !== null
+    const activeShipments = gameState.shipmentsInTransit.filter(
+      s => s.contractId === contract.id && s.legIndex === i,
+    )
+    const firstShipment = activeShipments[0] ?? null
+    const primaryVehicle = firstShipment
+      ? gameState.fleet.find(v => v.id === firstShipment.vehicleId)
+      : leg.assignedVehicleIds[0]
+        ? gameState.fleet.find(v => v.id === leg.assignedVehicleIds[0])
+        : null
+
+    let progress = 0
+    let daysLeft = 0
+    let isFrozen = false
+
+    if (firstShipment) {
+      const engineTier = primaryVehicle?.upgrades.engine ?? 0
+      const engineMult = engineTier === 2 ? eu.tier2TransitMultiplier
+        : engineTier === 1 ? eu.tier1TransitMultiplier : 1.0
+      const arrivalMs = firstShipment.departureTimeMs
+        + firstShipment.totalTurns * DAY_MS * skillSpeedMult * engineMult
+        + firstShipment.frozenDurationMs
+      const duration = arrivalMs - firstShipment.departureTimeMs
+      progress = duration > 0
+        ? Math.min(1, Math.max(0, (now - firstShipment.departureTimeMs) / duration))
+        : 1
+      daysLeft = Math.max(0, Math.ceil((arrivalMs - now) / DAY_MS))
+      isFrozen = firstShipment.isFrozen
+    }
+
+    return { leg, i, isComplete, firstShipment, primaryVehicle, progress, daysLeft, isFrozen }
+  })
+
+  return (
+    <button
+      onClick={onOpen}
+      className={`w-full text-left rounded-lg border px-2.5 py-2.5 space-y-2 transition-colors ${
         contract.isIllicit
-          ? 'border-red-900/60 bg-gray-950'
-          : 'border-gray-700/60 bg-gray-900'
+          ? 'border-red-900/40 bg-gray-950 hover:bg-gray-900'
+          : 'border-gray-700/40 bg-gray-900 hover:bg-gray-800'
       }`}
     >
-      {/* Route + badges row */}
+      {/* Header: route + badges */}
       <div className="flex items-center justify-between gap-2">
-        <div className="font-mono text-sm font-semibold text-white truncate">
-          {originCity.name} → {destCity.name}
-        </div>
-        <div className="flex gap-1 shrink-0">
-          {contract.isRecurring && (
-            <span className="text-xs font-mono px-1 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">
-              ∞
-            </span>
+        <span className="font-mono text-sm font-semibold text-white truncate">
+          {isMultiLeg
+            ? [
+                ...contract.legs.map(l => getCityName(l.origin)),
+                getCityName(contract.legs[contract.legs.length - 1]!.destination),
+              ].join(' → ')
+            : `${CITY_MAP.get(contract.origin)?.name} → ${CITY_MAP.get(contract.destination)?.name}`
+          }
+        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          {isMultiLeg && (
+            <span className="text-xs font-mono px-1 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-900">{contract.legs.length}-LEG</span>
           )}
-          <span className={`text-xs font-mono px-1 py-0.5 rounded ${RISK_CLS[contract.riskLevel]}`}>
-            {contract.riskLevel}
-          </span>
-          <span className={`text-xs font-mono px-1 py-0.5 rounded ${
-            contract.isIllicit ? 'bg-red-900 text-red-300' : 'bg-gray-800 text-gray-400'
+          <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+            contract.isIllicit ? 'bg-red-900/80 text-red-300' : 'bg-gray-800 text-gray-400'
           }`}>
             {contract.isIllicit ? 'ILLICIT' : 'LEGIT'}
           </span>
         </div>
       </div>
 
-      {/* Cargo + payout row */}
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="flex items-baseline gap-1.5">
-          <span className="text-sm font-mono font-bold text-emerald-400">
-            {contract.isRecurring
-              ? `+$${effectivePayout.toLocaleString()}/run`
-              : `+$${effectivePayout.toLocaleString()}`
-            }
-          </span>
-          {cargoBonus > 0 && (
-            <span className="text-xs font-mono text-emerald-700">
-              +{Math.round(cargoBonus * 100)}% hold
-            </span>
-          )}
-        </span>
-        <span className="text-xs font-mono text-gray-600 truncate">
-          {contract.cargoType} · {contract.volume} units
-          {contract.repReward ? ` · +${contract.repReward} rep` : ''}
-          {!isIndefinite && contract.deadline <= 2 ? ` · ${contract.deadline}w` : ''}
-        </span>
-      </div>
+      {/* Per-leg progress rows */}
+      {legDisplays.map(({ leg, i, isComplete, firstShipment, primaryVehicle, progress, daysLeft, isFrozen }) => {
+        if (isComplete) {
+          return (
+            <div key={i} className="space-y-1">
+              {isMultiLeg && <div className="text-xs font-mono text-gray-600">Leg {i + 1}</div>}
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 rounded-full bg-green-900/30">
+                  <div className="h-full w-full rounded-full bg-green-700/70" />
+                </div>
+                <span className="text-xs font-mono text-green-500 shrink-0">DONE ✓</span>
+              </div>
+            </div>
+          )
+        }
 
-      {/* Status / Actions */}
-      {contract.isAssigned && assignedVehicle && shipment ? (
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs">{VEHICLE_ICON[assignedVehicle.type]}</span>
-          <span className="text-xs font-mono text-yellow-400 truncate">{assignedVehicle.name}</span>
-          {contract.isRecurring && (
-            <button
-              onClick={() => cancelRecurringContract(contract.id)}
-              className="ml-auto text-xs font-mono text-gray-700 hover:text-red-400 transition-colors shrink-0"
-            >
-              cancel
-            </button>
-          )}
-        </div>
-      ) : picking ? (
-        <div className="space-y-1">
-          <div className="text-xs font-mono text-gray-500 mb-1">Pick a vehicle:</div>
-          {eligibleVehicles.map(v => {
-            const travelDays = route?.travelDays[v.type]
-            return (
-              <button
-                key={v.id}
-                onClick={() => handleAssign(v.id)}
-                className="w-full flex items-center justify-between px-2 py-1.5 rounded bg-gray-800 hover:bg-gray-700 text-xs font-mono text-white transition-colors"
-              >
-                <span>{VEHICLE_ICON[v.type]} {v.name} ({v.capacity} cap)</span>
-                {travelDays && (
-                  <span className="text-gray-400">{travelDays} day{travelDays > 1 ? 's' : ''}</span>
-                )}
-              </button>
-            )
-          })}
-          <button
-            onClick={() => setPicking(false)}
-            className="w-full py-1 text-xs font-mono text-gray-600 hover:text-gray-400 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      ) : blockedReason ? (
-        <div className="text-xs font-mono text-gray-600 py-0.5">{blockedReason}</div>
-      ) : (
-        <button
-          onClick={() => setPicking(true)}
-          disabled={!canAssign}
-          className="w-full text-xs font-mono py-1.5 rounded transition-colors bg-gray-800 hover:bg-gray-700 text-gray-300 cursor-pointer"
-        >
-          Assign Vehicle
-        </button>
-      )}
-    </div>
+        if (firstShipment) {
+          return (
+            <div key={i} className="space-y-1">
+              <div className="flex items-center justify-between text-xs font-mono">
+                <span className="flex items-center gap-1.5 text-gray-400 min-w-0">
+                  {isMultiLeg && <span className="text-gray-600 shrink-0">Leg {i + 1}</span>}
+                  {primaryVehicle && (
+                    <span className="truncate">
+                      {VEHICLE_ICON[primaryVehicle.type]} {primaryVehicle.name}
+                    </span>
+                  )}
+                </span>
+                {isFrozen
+                  ? <span className="text-amber-500 shrink-0">DELAYED</span>
+                  : <span className="text-gray-500 shrink-0">ETA {daysLeft}d</span>
+                }
+              </div>
+              <div className="h-1.5 rounded-full bg-gray-800 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${
+                    isFrozen ? 'bg-amber-600' : contract.isIllicit ? 'bg-red-600' : 'bg-blue-600'
+                  }`}
+                  style={{ width: `${Math.round(progress * 100)}%` }}
+                />
+              </div>
+            </div>
+          )
+        }
+
+        // Assigned but waiting (multi-leg: prior leg incomplete; single-leg: orphaned state)
+        if (leg.assignedVehicleIds.length > 0) {
+          return (
+            <div key={i} className="text-xs font-mono text-gray-700">
+              {isMultiLeg && `Leg ${i + 1}: `}
+              {primaryVehicle && `${VEHICLE_ICON[primaryVehicle.type]} ${primaryVehicle.name}`}
+              {isMultiLeg ? ` — awaiting leg ${i}` : ' — dispatching...'}
+            </div>
+          )
+        }
+
+        return null
+      })}
+
+      {/* Payout footer */}
+      <div className="text-xs font-mono text-gray-600 pt-0.5">
+        ${contract.payout.toLocaleString()} on delivery
+        {contract.isRecurring && (
+          <span> · {contract.runsCompleted}/{isIndefinite ? '∞' : contract.totalRuns} runs</span>
+        )}
+      </div>
+    </button>
   )
 }
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export function ContractBoard() {
-  const { gameState } = useGameStore()
-  const [filter, setFilter] = useState<Filter>('all')
-  const [transitOpen, setTransitOpen] = useState(false)
+  const { gameState, declineContract } = useGameStore()
+  const [subNav, setSubNav]   = useState<SubNav>('available')
+  const [filter, setFilter]   = useState<Filter>('all')
+  const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
+  const [now, setNow]         = useState(currentGameTimeMs)
+
+  // Tick every 500ms so progress bars animate
+  useEffect(() => {
+    const id = setInterval(() => setNow(currentGameTimeMs), 500)
+    return () => clearInterval(id)
+  }, [])
 
   const allContracts = gameState.contracts
-
-  const inTransit = allContracts.filter(c => c.isAssigned)
-  const available = allContracts.filter(c => !c.isAssigned && (
+  const inTransit    = allContracts.filter(c => c.isAssigned)
+  const allAvailable = allContracts.filter(c => !c.isAssigned)
+  const available    = allAvailable.filter(c =>
     filter === 'all' ||
     (filter === 'legit' && !c.isIllicit) ||
-    (filter === 'illicit' && c.isIllicit)
-  ))
+    (filter === 'illicit' && c.isIllicit),
+  )
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Panel header + filter tabs */}
-      <div className="px-3 py-2 border-b border-gray-700">
-        <div className="flex gap-1">
-          {(['all', 'legit', 'illicit'] as Filter[]).map(f => (
+    <div className="flex flex-col h-full overflow-hidden">
+
+      {/* ── Sub-nav ──────────────────────────────────────────────────── */}
+      <div className="flex shrink-0 border-b border-gray-700">
+        {(['available', 'in-transit'] as SubNav[]).map(nav => {
+          const count = nav === 'available' ? allAvailable.length : inTransit.length
+          return (
             <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`flex-1 text-xs font-mono py-1 rounded transition-colors capitalize ${
-                filter === f
-                  ? 'bg-gray-700 text-white'
+              key={nav}
+              onClick={() => setSubNav(nav)}
+              className={`relative flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-mono tracking-wide transition-colors ${
+                subNav === nav
+                  ? 'text-white border-b-2 border-amber-500'
                   : 'text-gray-500 hover:text-gray-300'
               }`}
             >
-              {f}
+              {nav === 'available' ? 'Available' : 'In Transit'}
+              <span className={`text-xs font-mono px-1.5 py-0.5 rounded-full ${
+                subNav === nav ? 'bg-gray-700 text-gray-300' : 'bg-gray-800 text-gray-600'
+              }`}>
+                {count}
+              </span>
+              {/* Dot indicator on In Transit when there are active shipments */}
+              {nav === 'in-transit' && inTransit.length > 0 && subNav !== 'in-transit' && (
+                <span className="absolute top-2 right-3 w-1.5 h-1.5 rounded-full bg-blue-500" />
+              )}
             </button>
-          ))}
-        </div>
+          )
+        })}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-4">
-        {/* In Transit — collapsible */}
-        {inTransit.length > 0 && (
-          <div>
-            <button
-              onClick={() => setTransitOpen(o => !o)}
-              className="w-full flex items-center justify-between px-2 py-1.5 rounded bg-gray-800 hover:bg-gray-700 transition-colors mb-2"
-            >
-              <span className="text-xs font-mono font-semibold text-gray-300 uppercase tracking-wider">In Transit</span>
-              <span className="flex items-center gap-2">
-                <span className="text-xs font-mono text-gray-500">{inTransit.length}</span>
-                <span className="text-gray-500 text-xs">{transitOpen ? '▴' : '▾'}</span>
-              </span>
-            </button>
-            {transitOpen && (
-              <div className="space-y-2">
-                {inTransit.map(c => <ContractCard key={c.id} contract={c} />)}
-              </div>
+      {/* ── Available ────────────────────────────────────────────────── */}
+      {subNav === 'available' && (
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <div className="shrink-0 px-3 pt-2 pb-1">
+            <div className="flex gap-1">
+              {(['all', 'legit', 'illicit'] as Filter[]).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`flex-1 text-xs font-mono py-1 rounded capitalize transition-colors ${
+                    filter === f ? 'bg-gray-700 text-white' : 'text-gray-600 hover:text-gray-400'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
+            {available.length === 0 ? (
+              <p className="text-xs font-mono text-gray-700 text-center py-6">
+                {allAvailable.length === 0
+                  ? 'No contracts available. Check back after the weekly refresh.'
+                  : 'No contracts match this filter.'}
+              </p>
+            ) : (
+              available.map(c => (
+                <AvailableCard
+                  key={c.id}
+                  contract={c}
+                  onOpen={() => setSelectedContract(c)}
+                  onDecline={() => declineContract(c.id)}
+                />
+              ))
             )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Available */}
-        <div>
-          <div className="flex items-center justify-between px-2 py-1.5 rounded bg-gray-800 mb-2">
-            <span className="text-xs font-mono font-semibold text-gray-300 uppercase tracking-wider">Available</span>
-            <span className="text-xs font-mono text-gray-500">{available.length}</span>
-          </div>
-          {available.length === 0 ? (
-            <p className="text-xs font-mono text-gray-700 text-center py-4">
-              {allContracts.filter(c => !c.isAssigned).length === 0
-                ? 'No contracts. Wait for the next weekly refresh.'
-                : 'No contracts match filter.'}
+      {/* ── In Transit ───────────────────────────────────────────────── */}
+      {subNav === 'in-transit' && (
+        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+          {inTransit.length === 0 ? (
+            <p className="text-xs font-mono text-gray-700 text-center py-6">
+              No active shipments.
             </p>
           ) : (
-            <div className="space-y-2">
-              {available.map(c => <ContractCard key={c.id} contract={c} />)}
-            </div>
+            inTransit.map(c => (
+              <InTransitCard
+                key={c.id}
+                contract={c}
+                now={now}
+                onOpen={() => setSelectedContract(c)}
+              />
+            ))
           )}
         </div>
-      </div>
+      )}
+
+      {/* Contract detail modal */}
+      {selectedContract && (
+        <ContractModal
+          contract={selectedContract}
+          onClose={() => setSelectedContract(null)}
+        />
+      )}
     </div>
   )
 }

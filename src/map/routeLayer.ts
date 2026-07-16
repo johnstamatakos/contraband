@@ -5,12 +5,6 @@ import type { ProjectedCity } from './cityLayer'
 import { projectCoord } from './projection'
 import { CITIES } from '../data/cities'
 
-// Colors per vehicle type (matching spec: blue=plane, purple=ship, amber=truck)
-const VEHICLE_COLORS: Record<VehicleType, number> = {
-  plane: 0x3b82f6,   // blue-500
-  ship:  0x8b5cf6,   // violet-500
-  truck: 0xf59e0b,   // amber-500
-}
 // When a route supports multiple vehicle types, use neutral
 const MULTI_COLOR = 0x6b7280   // gray-500
 const CLOSED_COLOR = 0x374151
@@ -131,6 +125,29 @@ export function getRouteSegments(
   return segments
 }
 
+// ── Perpendicular offset helper ────────────────────────────────────────────────
+
+// Shifts each point in a polyline by `offsetPx` pixels perpendicular to the
+// local segment direction (left-hand side when walking origin→destination).
+function offsetSegments(segments: [number, number][][], offsetPx: number): [number, number][][] {
+  return segments.map(pts => {
+    if (pts.length < 2) return pts
+    return pts.map((pt, i) => {
+      // Direction vector: use the segment this point belongs to
+      const [ax, ay] = i < pts.length - 1 ? pts[i]! : pts[i - 1]!
+      const [bx, by] = i < pts.length - 1 ? pts[i + 1]! : pts[i]!
+      const dx = bx - ax
+      const dy = by - ay
+      const len = Math.sqrt(dx * dx + dy * dy)
+      if (len < 0.001) return pt
+      // Perpendicular (left-hand): (-dy, dx) normalised
+      const nx = -dy / len
+      const ny =  dx / len
+      return [pt[0] + nx * offsetPx, pt[1] + ny * offsetPx] as [number, number]
+    })
+  })
+}
+
 // ── Dashed-segment drawing ─────────────────────────────────────────────────────
 
 // Draws animated dashes across multiple screen-space sub-arrays with a continuous
@@ -182,7 +199,7 @@ export function drawRoutes(
   projection: GeoProjection,
   dashOffset: number,
   filter: VehicleFilter = ALL_VEHICLES_VISIBLE,
-  weatherEvents: WeatherEvent[] = [],
+  _weatherEvents: WeatherEvent[] = [],
   waypoints: Record<string, [number, number][]> = {},
 ): void {
   g.clear()
@@ -215,16 +232,17 @@ export function drawRoutes(
     const segs = getRouteSegments(route, cityMap, projection, waypoints)
     if (!segs.length) continue
 
+    // Glow applies to the illicit line (offset -2.5) when dual, else center
+    const glowSegs = route.illicitLayerActive ? offsetSegments(segs, -2.5) : segs
+
     if (route.flaggedTurnsRemaining > 0) {
-      // Orange pulsing overlay for flagged (under investigation) routes
       const pulse = (Math.sin(dashOffset * 0.08) + 1) / 2
       const alpha = 0.35 + pulse * 0.35
-      drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset)
+      drawDashedSegments(g, glowSegs, DASH_LEN, GAP_LEN, dashOffset)
       g.stroke({ color: 0xf97316, width: OPEN_WIDTH + 3, alpha })
     } else if (route.heat > 0) {
-      // Red glow for hot routes — intensity scales with heat level
       const alpha = (route.heat / 5) * 0.55
-      drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset)
+      drawDashedSegments(g, glowSegs, DASH_LEN, GAP_LEN, dashOffset)
       g.stroke({ color: 0xef4444, width: OPEN_WIDTH + 2.5, alpha })
     }
   }
@@ -235,7 +253,18 @@ export function drawRoutes(
     if (!routeVisible(route, filter)) continue
     const segs = getRouteSegments(route, cityMap, projection, waypoints)
     if (!segs.length) continue
-    drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset)
-    g.stroke({ color: routeColor(route), width: OPEN_WIDTH, alpha: 0.8 })
+
+    if (route.illicitLayerActive) {
+      // Two parallel lines: legit (gray, +2.5px) and illicit (red, −2.5px)
+      const legitSegs   = offsetSegments(segs,  2.5)
+      const illicitSegs = offsetSegments(segs, -2.5)
+      drawDashedSegments(g, legitSegs,   DASH_LEN, GAP_LEN, dashOffset)
+      g.stroke({ color: MULTI_COLOR, width: OPEN_WIDTH, alpha: 0.7 })
+      drawDashedSegments(g, illicitSegs, DASH_LEN, GAP_LEN, dashOffset)
+      g.stroke({ color: 0xef4444, width: OPEN_WIDTH, alpha: 0.65 })
+    } else {
+      drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset)
+      g.stroke({ color: routeColor(route), width: OPEN_WIDTH, alpha: 0.8 })
+    }
   }
 }

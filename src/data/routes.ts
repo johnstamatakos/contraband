@@ -44,19 +44,18 @@ function makeRoute(spec: RouteSpec): Route {
 const ROUTE_SPECS: RouteSpec[] = [
   // ── Starting routes (pre-opened) ──────────────────────────────────────────
   { origin: 'chicago',     destination: 'new_york',    tier: 'domestic',      open: true,  allowedVehicles: ['truck', 'plane'], travelDays: { truck: 2, plane: 1 } },  // 790mi, ~12hr drive
-  { origin: 'chicago',     destination: 'houston',     tier: 'domestic',      open: false, allowedVehicles: ['truck', 'plane'], travelDays: { truck: 2, plane: 1 } },  // 1090mi
-  { origin: 'new_york',    destination: 'miami',       tier: 'domestic',      open: false, allowedVehicles: ['truck', 'plane'], travelDays: { truck: 2, plane: 1 } },  // 1280mi
+  { origin: 'chicago',     destination: 'houston',     tier: 'domestic',      open: true,  allowedVehicles: ['truck', 'plane'], travelDays: { truck: 2, plane: 1 } },  // 1090mi
+  { origin: 'new_york',    destination: 'miami',       tier: 'domestic',      open: false, allowedVehicles: ['truck', 'plane', 'ship'], travelDays: { truck: 2, plane: 1, ship: 3 } },  // 1280mi; Atlantic coast
   { origin: 'new_york',    destination: 'toronto',     tier: 'regional',      open: false, allowedVehicles: ['truck', 'plane'], travelDays: { truck: 1, plane: 1 } },  // 550mi, ~9hr
 
   // ── North America (overland — trucks eligible) ────────────────────────────
   { origin: 'chicago',     destination: 'los_angeles', tier: 'domestic',      open: false, allowedVehicles: ['truck', 'plane'], travelDays: { truck: 3, plane: 1 } },  // 2020mi, ~30hr
-  { origin: 'houston',     destination: 'miami',       tier: 'domestic',      open: false, allowedVehicles: ['truck', 'plane'], travelDays: { truck: 2, plane: 1 } },  // 1190mi
-  { origin: 'houston',     destination: 'new_york',    tier: 'domestic',      open: false, allowedVehicles: ['truck', 'plane'], travelDays: { truck: 2, plane: 1 } },  // 1630mi
+  { origin: 'houston',     destination: 'miami',       tier: 'domestic',      open: false, allowedVehicles: ['truck', 'plane', 'ship'], travelDays: { truck: 2, plane: 1, ship: 3 } },  // 1190mi; Gulf Coast
+  { origin: 'houston',     destination: 'new_york',    tier: 'domestic',      open: false, allowedVehicles: ['truck', 'plane', 'ship'], travelDays: { truck: 2, plane: 1, ship: 4 } },  // 1630mi; Gulf→Atlantic
   { origin: 'los_angeles', destination: 'mexico_city', tier: 'regional',      open: false, allowedVehicles: ['truck', 'plane'], travelDays: { truck: 3, plane: 1 } },  // 1550mi, ~24hr
-  { origin: 'miami',       destination: 'houston',     tier: 'domestic',      open: false, allowedVehicles: ['truck', 'plane'], travelDays: { truck: 2, plane: 1 } },
 
   // ── North America to South America / Caribbean (ocean — no trucks) ────────
-  { origin: 'miami',       destination: 'bogota',      tier: 'regional',      open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 3, plane: 2 } },  // 3.5hr flight
+  { origin: 'miami',       destination: 'bogota',      tier: 'regional',      open: false, allowedVehicles: ['plane'], travelDays: { plane: 2 } },  // 3.5hr flight; Bogotá is inland at 2600m — no port
   { origin: 'miami',       destination: 'sao_paulo',   tier: 'international', open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 5, plane: 2 } },  // 9hr flight
   { origin: 'new_york',    destination: 'sao_paulo',   tier: 'international', open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 6, plane: 2 } },  // 10hr flight
 
@@ -82,7 +81,6 @@ const ROUTE_SPECS: RouteSpec[] = [
   { origin: 'rotterdam',   destination: 'shanghai',    tier: 'long_haul',     open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 10, plane: 3 } }, // 12hr flight, 30-day sea
   { origin: 'los_angeles', destination: 'tokyo',       tier: 'long_haul',     open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 7, plane: 3 } },  // 11hr flight
   { origin: 'los_angeles', destination: 'singapore',   tier: 'long_haul',     open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 10, plane: 3 } }, // 17hr flight
-  { origin: 'new_york',    destination: 'rotterdam',   tier: 'long_haul',     open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 7, plane: 3 } },
 
   // ── Asia (coastal/ocean — ships and planes) ───────────────────────────────
   { origin: 'mumbai',      destination: 'singapore',   tier: 'international', open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 5, plane: 2 } }, // 6hr flight

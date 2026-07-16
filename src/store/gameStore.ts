@@ -1,7 +1,16 @@
 import { create } from 'zustand'
-import type { GameState, Vehicle, VehicleType, Route, RouteTier, ShipmentInTransit } from '../engine/gameState'
+import type { GameState, Vehicle, VehicleType, Route, RouteTier, ShipmentInTransit, UpgradeType } from '../engine/gameState'
 import { VEHICLE_SPECS, ROUTE_COSTS, getNetWorth, canEstablishRoute, DEFAULT_UPGRADES } from '../engine/gameState'
-import { SKILL_DEFS, SKILL_BY_ID } from '../data/skills'
+
+export interface ThreatAlert {
+  id: string
+  vehicleId: string
+  vehicleName: string
+  vehicleType: VehicleType
+  fine: number
+  expiresOnTurn: number
+}
+import { SKILL_BY_ID } from '../data/skills'
 import { resolveWeeklyTick, resolveArrival } from '../engine/turnEngine'
 import { generateContracts } from '../engine/contracts'
 import { getAllRoutes } from '../data/routes'
@@ -10,7 +19,6 @@ import { getCityName } from '../data/cities'
 import { CONFIG } from '../engine/config'
 
 // ─── Shared game-time snapshot (updated by useGameClock, read by assignVehicle) ─
-// Not in Zustand to avoid re-renders; module-level mutable.
 export let currentGameTimeMs = 0
 export function setCurrentGameTimeMs(ms: number): void {
   currentGameTimeMs = ms
@@ -18,11 +26,8 @@ export function setCurrentGameTimeMs(ms: number): void {
 
 // ─── Initial state factory ────────────────────────────────────────────────────
 
-function makeStartingTruck(): Vehicle {
-  return {
-    id: 'truck_01',
-    type: 'truck',
-    name: 'Truck #1',
+function makeStartingTrucks(): Vehicle[] {
+  const shared = {
     ...VEHICLE_SPECS.truck,
     isAssigned: false,
     currentShipmentId: null,
@@ -31,6 +36,10 @@ function makeStartingTruck(): Vehicle {
     impoundFine: null,
     impoundExpiresOnTurn: null,
   }
+  return [
+    { id: 'truck_01', type: 'truck', name: 'Truck #1', ...shared },
+    { id: 'truck_02', type: 'truck', name: 'Truck #2', ...shared },
+  ]
 }
 
 function createInitialState(): GameState {
@@ -39,23 +48,24 @@ function createInitialState(): GameState {
     reputation: CONFIG.start.reputation,
     globalHeat: CONFIG.start.globalHeat,
     turn: 1,
-    fleet: [makeStartingTruck()],
+    fleet: makeStartingTrucks(),
     routes: getAllRoutes(),
     contracts: [],
     shipmentsInTransit: [],
     weatherEvents: [],
-    contacts: [],
     inspector: {
       currentCityId: null,
       appearsOnTurn: CONFIG.inspector.appearsOnTurn,
       probableNextCityId: null,
       isTrackedByInformant: false,
+      additionalCityIds: [],
     },
     interpol: {
       currentCityId: null,
       appearsOnTurn: CONFIG.interpol.appearsOnTurn,
       probableNextCityId: null,
       isTrackedByInformant: false,
+      additionalCityIds: [],
     },
     events: [],
     phase: 'player_actions',
@@ -66,6 +76,10 @@ function createInitialState(): GameState {
     weeklyStats: { deliveryIncome: 0, contractsCompleted: 0, busts: 0, repFromDeliveries: 0, heatFromDeliveries: 0, deliveries: [] },
     gameVersion: 0,
     unlockedSkills: [],
+    profitHistory: [],
+    hasCompletedFirstIllicit: false,
+    lastLayLowTurn: 0,
+    recentIllicitCompletions: [],
   }
   return { ...base, contracts: generateContracts(base) }
 }
@@ -95,29 +109,60 @@ interface GameStore {
   buyVehicle: (type: VehicleType) => void
   establishRoute: (routeId: string) => void
   activateIllicitLayer: (routeId: string) => void
-  assignVehicle: (contractId: string, vehicleId: string) => void
+  assignVehicle: (contractId: string, vehicleId: string, legIndex?: number) => void
   clearWeeklySummary: () => void
 
   // Vehicle upgrades
-  upgradeVehicle: (vehicleId: string, upgradeType: 'cargo' | 'engine' | 'concealment') => void
+  upgradeVehicle: (vehicleId: string, upgradeType: UpgradeType) => void
 
   // Recurring contract management
   cancelRecurringContract: (contractId: string) => void
 
+  // Cancel any assigned contract (frees all vehicles)
+  cancelContract: (contractId: string) => void
+
+  // Contract decline (unassigned)
+  declineContract: (contractId: string) => void
+
   // Impound recovery
   payImpoundFine: (vehicleId: string) => void
 
+  // Sell vehicle
+  sellVehicle: (vehicleId: string) => void
+
+  // Heat management
+  payDownHeat: () => void
+
   // Skill tree
   unlockSkill: (skillId: string) => void
+
+  // Threat alerts (vehicle impounded mid-game)
+  threatAlerts: ThreatAlert[]
+  dismissThreatAlert: (alertId: string) => void
 
   // Derived
   netWorth: () => number
 }
 
 // ─── Vehicle counter for unique IDs ──────────────────────────────────────────
-let vehicleCounter = 2
+let vehicleCounter = 3
 
 // ─── Store ────────────────────────────────────────────────────────────────────
+
+// ── Helper: detect newly impounded vehicles and build alerts ─────────────────
+function detectNewImpounds(prevFleet: Vehicle[], nextFleet: Vehicle[], gameTimeMs: number): ThreatAlert[] {
+  const prevImpoundedIds = new Set(prevFleet.filter(v => v.isImpounded).map(v => v.id))
+  return nextFleet
+    .filter(v => v.isImpounded && !prevImpoundedIds.has(v.id) && v.impoundFine !== null && v.impoundExpiresOnTurn !== null)
+    .map(v => ({
+      id: `alert_${v.id}_${gameTimeMs}`,
+      vehicleId: v.id,
+      vehicleName: v.name,
+      vehicleType: v.type,
+      fine: v.impoundFine!,
+      expiresOnTurn: v.impoundExpiresOnTurn!,
+    }))
+}
 
 export const useGameStore = create<GameStore>((set, get) => ({
   gameState: createInitialState(),
@@ -125,6 +170,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   gameSpeed: 1,
   hasStarted: false,
   testMode: false,
+  threatAlerts: [],
 
   togglePause: () => set(s => ({ isPaused: !s.isPaused })),
   cycleSpeed: () => set(s => ({ gameSpeed: s.gameSpeed === 1 ? 2 : s.gameSpeed === 2 ? 4 : 1 })),
@@ -134,17 +180,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const { gameState, testMode } = get()
     if (gameState.phase === 'game_over') return
     let { state } = resolveWeeklyTick(gameState, weekNumber, gameTimeMs)
-    if (testMode && state.phase === 'game_over') state = { ...state, phase: 'playing', winState: null }
-    set({ gameState: state })
-    // isPaused stays as-is; the clock pauses because lastWeeklySummary !== null
+    if (testMode && state.phase === 'game_over') state = { ...state, phase: 'player_actions', winState: null }
+    const newAlerts = detectNewImpounds(gameState.fleet, state.fleet, gameTimeMs)
+    set(s => ({
+      gameState: state,
+      threatAlerts: [...s.threatAlerts, ...newAlerts],
+      isPaused: newAlerts.length > 0 ? true : s.isPaused,
+    }))
   },
 
   resolveArrival: (shipmentId, gameTimeMs) => {
     const { gameState, testMode } = get()
     if (gameState.phase === 'game_over') return
     let { state } = resolveArrival(gameState, shipmentId, gameTimeMs)
-    if (testMode && state.phase === 'game_over') state = { ...state, phase: 'playing', winState: null }
-    set({ gameState: state })
+    if (testMode && state.phase === 'game_over') state = { ...state, phase: 'player_actions', winState: null }
+    const newAlerts = detectNewImpounds(gameState.fleet, state.fleet, gameTimeMs)
+    set(s => ({
+      gameState: state,
+      threatAlerts: [...s.threatAlerts, ...newAlerts],
+      isPaused: newAlerts.length > 0 ? true : s.isPaused,
+    }))
   },
 
   openPendingRoute: (routeId, gameTimeMs) => {
@@ -176,8 +231,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const event = s.gameState.weatherEvents.find(e => e.id === eventId)
       if (!event) return s
 
-      // Update frozenDurationMs on all shipments that were blocked by this storm.
-      // stormActiveSinceMs is when isForecast flipped to false (one week before clearAtMs).
       const stormActiveSinceMs = event.clearAtMs != null
         ? event.clearAtMs - DAY_MS * CONFIG.weather.activeDurationDays
         : now
@@ -185,8 +238,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       const updatedShipments = s.gameState.shipmentsInTransit.map(shipment => {
         if (!affectedRouteIds.has(shipment.routeId)) return shipment
-        // Freeze started either when the storm activated or when the shipment departed,
-        // whichever is later (handles shipments assigned mid-storm).
         const freezeStart = Math.max(shipment.departureTimeMs, stormActiveSinceMs)
         const additionalFreeze = Math.max(0, now - freezeStart)
         if (additionalFreeze === 0) return shipment
@@ -203,8 +254,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
     })
   },
 
+  dismissThreatAlert: (alertId) => {
+    set(s => {
+      const remaining = s.threatAlerts.filter(a => a.id !== alertId)
+      return { threatAlerts: remaining, isPaused: remaining.length > 0 ? true : false }
+    })
+  },
+
   newGame: () => {
-    vehicleCounter = 2
+    vehicleCounter = 3
     currentGameTimeMs = 0
     const initialState = createInitialState()
     set({
@@ -212,6 +270,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       isPaused: false,
       gameSpeed: 1,
       hasStarted: false,
+      threatAlerts: [],
     })
   },
 
@@ -266,25 +325,28 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const eligibility = canEstablishRoute(route, gameState)
     if (!eligibility.ok) return
 
-    // logistics_3: Trade Deals — route establishment cost multiplier
-    const baseCost = ROUTE_COSTS[route.tier].establish
-    const discount = gameState.unlockedSkills.includes('logistics_3')
-      ? CONFIG.skills.effects.logistics_3.establishCostMultiplier
-      : 1.0
-    const cost = Math.round(baseCost * discount)
+    const cost = ROUTE_COSTS[route.tier].establish
     if (gameState.cash < cost) return
 
     const pendingDays = CONFIG.routes.pendingDays[route.tier as RouteTier]
-    const updatedRoutes: Route[] = gameState.routes.map(r =>
-      r.id === routeId
-        ? { ...r, status: 'pending' as const, turnsUntilOpen: null, openAtMs: currentGameTimeMs + pendingDays * DAY_MS }
-        : r,
-    )
+    const openAt = currentGameTimeMs + pendingDays * DAY_MS
+
+    const reverseId = `route_${route.destination}_${route.origin}`
+    const reverseRoute = gameState.routes.find(r => r.id === reverseId && r.status === 'closed')
+
+    const updatedRoutes: Route[] = gameState.routes.map(r => {
+      if (r.id === routeId || r.id === reverseId) {
+        if (r.id === routeId || reverseRoute) {
+          return { ...r, status: 'pending' as const, turnsUntilOpen: null, openAtMs: openAt }
+        }
+      }
+      return r
+    })
 
     const newEvent = {
       id: `e_est_${routeId}`,
       gameTimeMs: currentGameTimeMs,
-      message: `Establishing ${getCityName(route.origin)} → ${getCityName(route.destination)}. Opens in ${pendingDays} day${pendingDays !== 1 ? 's' : ''}. -$${cost.toLocaleString()}`,
+      message: `Establishing ${getCityName(route.origin)} ↔ ${getCityName(route.destination)}. Opens in ${pendingDays} day${pendingDays !== 1 ? 's' : ''}. -$${cost.toLocaleString()}`,
       type: 'info' as const,
     }
 
@@ -306,14 +368,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const cost = ROUTE_COSTS[route.tier as RouteTier].illicit
     if (gameState.cash < cost) return
 
+    const reverseId = `route_${route.destination}_${route.origin}`
     const updatedRoutes: Route[] = gameState.routes.map(r =>
-      r.id === routeId ? { ...r, illicitLayerActive: true } : r,
+      (r.id === routeId || r.id === reverseId) && r.status === 'open'
+        ? { ...r, illicitLayerActive: true }
+        : r,
     )
 
     const newEvent = {
       id: `e_illicit_${routeId}`,
       gameTimeMs: currentGameTimeMs,
-      message: `Illicit layer activated: ${getCityName(route.origin)} → ${getCityName(route.destination)}. -$${cost.toLocaleString()}`,
+      message: `Illicit layer activated: ${getCityName(route.origin)} ↔ ${getCityName(route.destination)}. -$${cost.toLocaleString()}`,
       type: 'warning' as const,
     }
 
@@ -327,57 +392,109 @@ export const useGameStore = create<GameStore>((set, get) => ({
     })
   },
 
-  assignVehicle: (contractId: string, vehicleId: string) => {
+  assignVehicle: (contractId: string, vehicleId: string, legIndex = 0) => {
     const { gameState } = get()
     const contract = gameState.contracts.find(c => c.id === contractId)
     const vehicle = gameState.fleet.find(v => v.id === vehicleId)
 
-    if (!contract || !vehicle || vehicle.isAssigned || vehicle.isImpounded || contract.isAssigned) return
+    if (!contract || !vehicle || vehicle.isImpounded) return
+    // Vehicle must be idle (not assigned to another contract or reserved for another leg)
+    if (vehicle.isAssigned) return
+
+    const leg = contract.legs[legIndex]
+    if (!leg) return
+
+    // Don't over-assign convoy legs
+    if (leg.assignedVehicleIds.length >= contract.requiredVehicleCount) return
+    // Don't re-assign dispatched legs
+    if (leg.shipmentIds.length > 0) return
 
     const route = gameState.routes.find(r =>
       r.status === 'open' &&
-      r.origin === contract.origin &&
-      r.destination === contract.destination &&
+      r.origin === leg.origin &&
+      r.destination === leg.destination &&
       r.allowedVehicles.includes(vehicle.type),
     )
     if (!route) return
     if (contract.isIllicit && !route.illicitLayerActive) return
     if (contract.isIllicit && route.flaggedTurnsRemaining > 0) return
 
+    // Check vehicle upgrade requirements
+    const reqs = contract.vehicleRequirements
+    if (reqs.range && vehicle.upgrades.range < reqs.range) return
+    if (reqs.concealment && vehicle.upgrades.concealment < reqs.concealment) return
+    if (reqs.cargo && vehicle.upgrades.cargo < reqs.cargo) return
+    if (reqs.engine && vehicle.upgrades.engine < reqs.engine) return
+
+    // Check skill requirements
+    for (const skill of contract.requiredSkills) {
+      if (!gameState.unlockedSkills.includes(skill)) return
+    }
+
     const travelDays = route.travelDays[vehicle.type]
     if (!travelDays) return
 
-    const shipmentId = `ship_${Date.now()}`
-    const shipment: ShipmentInTransit = {
-      id: shipmentId,
-      contractId: contract.id,
-      vehicleId: vehicle.id,
-      routeId: route.id,
-      turnsRemaining: travelDays,
-      totalTurns: travelDays,
-      isIllicit: contract.isIllicit,
-      isFrozen: false,
-      departureTimeMs: currentGameTimeMs,
-      frozenDurationMs: 0,
+    // Update leg assignment
+    let updatedLegs = contract.legs.map((l, i) =>
+      i === legIndex
+        ? { ...l, assignedVehicleIds: [...l.assignedVehicleIds, vehicleId] }
+        : l,
+    )
+
+    let newShipments = [...gameState.shipmentsInTransit]
+    let updatedFleet = gameState.fleet.map(v =>
+      v.id === vehicleId ? { ...v, isAssigned: true } : v,
+    )
+    let updatedRoutes = gameState.routes
+
+    // Dispatch shipment if: leg 0 (always immediate), or previous leg already complete
+    const prevLegComplete = legIndex === 0 ||
+      (contract.legs[legIndex - 1]?.completedAt !== null)
+
+    if (prevLegComplete) {
+      const shipmentId = `ship_${Date.now()}_l${legIndex}`
+      const shipment: ShipmentInTransit = {
+        id: shipmentId,
+        contractId: contract.id,
+        vehicleId: vehicle.id,
+        routeId: route.id,
+        legIndex,
+        turnsRemaining: travelDays,
+        totalTurns: travelDays,
+        isIllicit: contract.isIllicit,
+        isFrozen: false,
+        departureTimeMs: currentGameTimeMs,
+        frozenDurationMs: 0,
+      }
+      newShipments = [...newShipments, shipment]
+      updatedLegs = updatedLegs.map((l, i) =>
+        i === legIndex
+          ? { ...l, shipmentIds: [...l.shipmentIds, shipmentId] }
+          : l,
+      )
+      updatedFleet = updatedFleet.map(v =>
+        v.id === vehicleId ? { ...v, currentShipmentId: shipmentId } : v,
+      )
+
+      // Route heat & consecutiveIllicitRuns are incremented on arrival
+      // (in arrivalResolver) AFTER the detection roll — not here at dispatch.
     }
 
-    const updatedRoutes = contract.isIllicit
-      ? gameState.routes.map(r =>
-          r.id === route.id
-            ? {
-                ...r,
-                heat: Math.min(5, r.heat + 1),
-                consecutiveIllicitRuns: r.consecutiveIllicitRuns + 1,
-                lastIllicitRunTurn: gameState.turn,
-              }
-            : r,
-        )
-      : gameState.routes
+    const contractIsNowAssigned = updatedLegs.every(
+      l => l.assignedVehicleIds.length >= contract.requiredVehicleCount,
+    )
+
+    const legLabel = legIndex === 0
+      ? `${getCityName(leg.origin)} → ${getCityName(leg.destination)}`
+      : `Leg ${legIndex + 1}: ${getCityName(leg.origin)} → ${getCityName(leg.destination)}`
+    const dispatchMsg = prevLegComplete
+      ? `${vehicle.name} dispatched: ${legLabel} (${travelDays} day${travelDays > 1 ? 's' : ''}).`
+      : `${vehicle.name} reserved for ${legLabel} — awaiting leg ${legIndex} arrival.`
 
     const newEvent = {
-      id: `e_assign_${shipmentId}`,
+      id: `e_assign_${contractId}_l${legIndex}_${Date.now()}`,
       gameTimeMs: currentGameTimeMs,
-      message: `${vehicle.name} dispatched: ${getCityName(contract.origin)} → ${getCityName(contract.destination)} (${travelDays} day${travelDays > 1 ? 's' : ''}).`,
+      message: dispatchMsg,
       type: 'info' as const,
     }
 
@@ -386,12 +503,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
         ...gameState,
         routes: updatedRoutes,
         contracts: gameState.contracts.map(c =>
-          c.id === contractId ? { ...c, isAssigned: true, assignedVehicleId: vehicleId } : c,
+          c.id === contractId
+            ? {
+                ...c,
+                isAssigned: contractIsNowAssigned,
+                assignedVehicleId: updatedLegs[0]?.assignedVehicleIds[0] ?? null,
+                legs: updatedLegs,
+              }
+            : c,
         ),
-        fleet: gameState.fleet.map(v =>
-          v.id === vehicleId ? { ...v, isAssigned: true, currentShipmentId: shipmentId } : v,
-        ),
-        shipmentsInTransit: [...gameState.shipmentsInTransit, shipment],
+        fleet: updatedFleet,
+        shipmentsInTransit: newShipments,
         events: [...gameState.events, newEvent].slice(-50),
       },
     })
@@ -403,7 +525,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!vehicle) return
 
     const currentTier = vehicle.upgrades[upgradeType]
-    if (currentTier >= 2) return  // already maxed
+    if (currentTier >= 2) return
 
     const nextTier = (currentTier + 1) as 1 | 2
     const fraction = nextTier === 1
@@ -412,7 +534,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const cost = Math.round(vehicle.purchasePrice * fraction)
     if (gameState.cash < cost) return
 
-    const UPGRADE_LABELS = { cargo: 'Cargo Hold', engine: 'Engine', concealment: 'Concealment' }
+    const UPGRADE_LABELS: Record<UpgradeType, string> = {
+      cargo: 'Cargo Hold', engine: 'Engine', concealment: 'Concealment', range: 'Fuel Tank',
+    }
     const newEvent = {
       id: `e_upgrade_${vehicleId}_${upgradeType}_${currentGameTimeMs}`,
       gameTimeMs: currentGameTimeMs,
@@ -464,6 +588,37 @@ export const useGameStore = create<GameStore>((set, get) => ({
     })
   },
 
+  cancelContract: (contractId) => {
+    const { gameState } = get()
+    const contract = gameState.contracts.find(c => c.id === contractId)
+    if (!contract) return
+
+    // Collect all vehicle IDs across all legs
+    const allVehicleIds = new Set(contract.legs.flatMap(l => l.assignedVehicleIds))
+    const activeShipmentIds = new Set(contract.legs.flatMap(l => l.shipmentIds))
+
+    const newEvent = {
+      id: `e_cancel_${contractId}_${currentGameTimeMs}`,
+      gameTimeMs: currentGameTimeMs,
+      message: `Contract cancelled: ${getCityName(contract.origin)} → ${getCityName(contract.destination)}.`,
+      type: 'info' as const,
+    }
+
+    set({
+      gameState: {
+        ...gameState,
+        contracts: gameState.contracts.filter(c => c.id !== contractId),
+        shipmentsInTransit: gameState.shipmentsInTransit.filter(s => !activeShipmentIds.has(s.id)),
+        fleet: gameState.fleet.map(v =>
+          allVehicleIds.has(v.id)
+            ? { ...v, isAssigned: false, currentShipmentId: null }
+            : v,
+        ),
+        events: [...gameState.events, newEvent].slice(-50),
+      },
+    })
+  },
+
   payImpoundFine: (vehicleId) => {
     const { gameState } = get()
     const vehicle = gameState.fleet.find(v => v.id === vehicleId)
@@ -491,23 +646,71 @@ export const useGameStore = create<GameStore>((set, get) => ({
     })
   },
 
+  sellVehicle: (vehicleId) => {
+    const { gameState } = get()
+    const vehicle = gameState.fleet.find(v => v.id === vehicleId)
+    if (!vehicle) return
+    if (vehicle.isAssigned || vehicle.isImpounded) return
+    const availableCount = gameState.fleet.filter(v => !v.isImpounded).length
+    if (availableCount <= 1) return
+
+    const newEvent = {
+      id: `e_sell_${vehicleId}_${currentGameTimeMs}`,
+      gameTimeMs: currentGameTimeMs,
+      message: `Sold ${vehicle.name} for $${vehicle.resaleValue.toLocaleString()}.`,
+      type: 'info' as const,
+    }
+
+    set({
+      gameState: {
+        ...gameState,
+        cash:   gameState.cash + vehicle.resaleValue,
+        fleet:  gameState.fleet.filter(v => v.id !== vehicleId),
+        events: [...gameState.events, newEvent].slice(-50),
+      },
+    })
+  },
+
+  payDownHeat: () => {
+    const { gameState } = get()
+    const { cost, heatReduction, cooldownWeeks } = CONFIG.layLow
+    if (gameState.cash < cost) return
+    if (gameState.globalHeat <= 0) return
+    if (gameState.turn - (gameState.lastLayLowTurn ?? 0) < cooldownWeeks) return
+
+    const newHeat = Math.max(0, gameState.globalHeat - heatReduction)
+    const newEvent = {
+      id: `e_laylow_${currentGameTimeMs}`,
+      gameTimeMs: currentGameTimeMs,
+      message: `Laying low — heat reduced by ${gameState.globalHeat - newHeat}. -$${cost.toLocaleString()}`,
+      type: 'info' as const,
+    }
+
+    set({
+      gameState: {
+        ...gameState,
+        cash: gameState.cash - cost,
+        globalHeat: newHeat,
+        lastLayLowTurn: gameState.turn,
+        events: [...gameState.events, newEvent].slice(-50),
+      },
+    })
+  },
+
   unlockSkill: (skillId) => {
     const { gameState } = get()
     const skill = SKILL_BY_ID.get(skillId)
     if (!skill) return
     if (gameState.unlockedSkills.includes(skillId)) return
 
-    // Rep threshold
     const repRequired = CONFIG.skills.tierRepRequirements[`tier${skill.tier}` as 'tier1' | 'tier2' | 'tier3']
     if (gameState.reputation < repRequired) return
 
-    // Must unlock previous tier in same branch first
     if (skill.tier > 1) {
       const prereqId = `${skill.branch}_${skill.tier - 1}`
       if (!gameState.unlockedSkills.includes(prereqId)) return
     }
 
-    // Cash check
     const cost = CONFIG.skills.tierCashCosts[`tier${skill.tier}` as 'tier1' | 'tier2' | 'tier3']
     if (gameState.cash < cost) return
 
@@ -518,14 +721,32 @@ export const useGameStore = create<GameStore>((set, get) => ({
       type: 'success' as const,
     }
 
+    // network_2 (Street Intel): reveal Inspector and Interpol on map
+    const revealsThreats = skillId === 'network_2'
+
     set({
       gameState: {
         ...gameState,
         cash: gameState.cash - cost,
         unlockedSkills: [...gameState.unlockedSkills, skillId],
+        inspector: revealsThreats
+          ? { ...gameState.inspector, isTrackedByInformant: true }
+          : gameState.inspector,
+        interpol: revealsThreats
+          ? { ...gameState.interpol, isTrackedByInformant: true }
+          : gameState.interpol,
         events: [...gameState.events, newEvent].slice(-50),
       },
     })
+  },
+
+  declineContract: (contractId: string) => {
+    set(s => ({
+      gameState: {
+        ...s.gameState,
+        contracts: s.gameState.contracts.filter(c => c.id !== contractId),
+      },
+    }))
   },
 
   netWorth: () => getNetWorth(get().gameState),

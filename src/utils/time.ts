@@ -42,7 +42,9 @@ export function formatWeekDate(weekNumber: number): string {
 export function formatTimeRemaining(msLeft: number): string {
   if (msLeft <= 0) return 'Opening...'
   const gameHours = msLeft / (WEEK_MS / 168)
-  if (gameHours >= 23.5) return '~1 day'
+  const gameDays  = gameHours / 24
+  if (gameDays  >= 2)    return `~${Math.round(gameDays)} days`
+  if (gameDays  >= 0.95) return `~1 day`
   if (gameHours >= 1)    return `~${Math.ceil(gameHours)}h`
   return `~${Math.ceil(gameHours * 60)}m`
 }

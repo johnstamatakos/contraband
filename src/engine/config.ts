@@ -18,8 +18,8 @@ export const CONFIG = {
 
   // ── Win / lose thresholds ───────────────────────────────────────────────────
   winLose: {
-    netWorthGoal:        1_000_000,  // cash + fleet resale value to win
-    reputationWinAt:     80,       // reputation threshold to trigger rep-win
+    netWorthGoal:        2_000_000,  // cash + fleet resale value to win
+    reputationWinAt:     100,      // max reputation to trigger rep-win
     // Lose conditions: cash <= 0  OR  reputation <= 0  (no threshold to configure)
   },
 
@@ -85,12 +85,32 @@ export const CONFIG = {
     },
   },
 
+  // ── Lay Low (manual heat reduction) ──────────────────────────────────────────
+  layLow: {
+    cost:           5_000,  // cash cost per use
+    heatReduction:  15,     // globalHeat reduced
+    cooldownWeeks:  2,      // minimum weeks between uses
+  },
+
   // ── Contract board ──────────────────────────────────────────────────────────
   contracts: {
-    boardSize:    8,   // target number of unassigned contracts on the board
+    boardSize:    12,  // target number of unassigned contracts on the board
     minLegit:     3,   // floor: always keep at least this many legit contracts
     maxPerRoute:  2,   // max contracts for any single route pair on the board
-    maxPerCity:   3,   // max contracts involving the same city on the board
+    maxPerCity:   2,   // max contracts involving the same city on the board
+
+    commodityMatchBonus: 1.25,  // +25% payout when cargo matches city export→import flow
+    illicitMaxPerRoute: 1,     // max illicit contracts per route pair on the board
+
+    // Multi-leg contracts
+    multiLeg: {
+      minTierRank:          0,     // any tier can spawn multi-leg
+      twoLegChance:         0.20,  // 20% chance for 2-leg upgrade
+      threeLegChance:       0.10,  // 10% chance to extend 2-leg to 3-leg
+      twoLegPayoutMult:     1.65,
+      threeLegPayoutMult:   2.20,
+      extraDeadlineDays:    2,     // extra weeks per additional leg
+    },
 
     deadlineMin:  3,   // minimum weeks to complete a contract
     deadlineMax:  5,   // maximum weeks to complete a contract
@@ -149,36 +169,23 @@ export const CONFIG = {
     },
   },
 
-  // ── Contact weekly fees ─────────────────────────────────────────────────────
-  contacts: {
-    costPerTurn: {
-      customs_insider:   800,
-      port_fixer:        700,
-      informant:         600,
-      fence:             500,
-      underworld_broker: 900,
-      freight_broker:    300,
-      port_agent:        500,
-      airline_partner:   400,
-    },
-  },
-
   // ── Detection probability ───────────────────────────────────────────────────
   detection: {
-    baseChance:              0.05,  // flat base probability
+    baseChance:              0.12,  // flat base probability — high enough that upgrades reduce but never eliminate risk
     perRouteHeat:            0.08,  // added per route-heat point (scale 0–5)
     perGlobalHeatPoint:      0.002, // added per global-heat point (scale 0–100)
-    perConsecutiveRun:       0.03,  // added per consecutive illicit run on this route
+    perConsecutiveRun:       0.04,  // added per consecutive illicit run on this route
     maxConsecutiveRuns:      5,     // consecutive-run bonus caps here
+    minProbability:          0.03,  // hard floor — running contraband is never truly safe
     // Inspector: domestic/regional routes only
-    inspectorBonus:          0.20,  // +20% when inspector is at origin or destination
+    inspectorBonus:          0.25,  // +25% when inspector is at origin or destination
     // Interpol: international/long_haul routes only
     interpolBonus:           0.45,  // +45% when Interpol is directly at origin/destination
     interpolAdjacentBonus:   0.15,  // +15% when Interpol is 1 hop away on the intl graph
     maxProbability:          0.80,  // hard ceiling on detection chance
     // Legit cover: each active recurring legit shipment in transit lowers detection
-    perLegitRecurring:       0.02,  // reduction per active legit recurring shipment
-    maxLegitRecurringBonus:  0.20,  // hard cap on total cover reduction (10 contracts)
+    perLegitRecurring:       0.01,  // reduction per active legit recurring shipment
+    maxLegitRecurringBonus:  0.08,  // hard cap on total cover reduction (8 contracts)
   },
 
   // ── Economy (bust & success consequences, weekly decay) ─────────────────────
@@ -186,25 +193,29 @@ export const CONFIG = {
     // Inspector bust consequences (domestic / regional routes)
     bustRepLoss:        8,
     bustGlobalHeatGain: 10,
-    bustRouteHeatGain:  2,
-    bustFlaggedWeeks:   2,   // shorter investigation window
+    bustRouteHeatGain:  3,   // +3 heat per bust; decays back in ~3 weeks
+    bustFlaggedWeeks:   4,   // 4-week lockout outlasts most contract deadlines
 
     // Interpol bust consequences (international / long_haul routes) — much harsher
     interpolBustRepLoss:        15,
     interpolBustGlobalHeatGain: 22,
-    interpolBustRouteHeatGain:  3,
-    interpolBustFlaggedWeeks:   5,   // long lockout on international routes
+    interpolBustRouteHeatGain:  4,   // +4 heat per bust
+    interpolBustFlaggedWeeks:   6,   // 6-week lockout on international routes
 
     // Successful illicit delivery
-    successGlobalHeatGain: 2,
+    successGlobalHeatGain: 5,
 
     // Weekly decay
     globalHeatDecayPerWeek:    2,   // globalHeat reduced by this each weekly tick
     repDecayThresholdWeeks:    3,   // weeks without illicit activity before rep starts dropping
     repDecayPerWeek:           2,   // rep lost each week after the threshold
 
-    // Ship piracy (international / long_haul routes only)
-    piracyChance: 0.08,
+    // Ship piracy (international / long_haul routes only — affects ALL ships, legit or illicit)
+    piracyChance:          0.04,   // 4% per ship per international/long_haul arrival; mitigated by concealment
+    piracyRansomFraction:  0.55,   // ransom as fraction of vessel purchase price (~$44K for a ship)
+    piracyRepLoss:         3,      // reputation lost — lighter hit since pirates aren't law enforcement
+    piracyGlobalHeatGain:  8,      // global heat gained per piracy event
+    piracyImpoundWeeks:    4,      // 4 weeks to pay ransom before permanent loss
 
     // Inspector impound on bust (Interpol busts seize the vehicle permanently — no fine)
     impoundFineMultiplier: 0.40,  // Inspector: 40% of vehicle purchase price
@@ -227,8 +238,16 @@ export const CONFIG = {
         tier2TransitMultiplier: 0.80,   // −20% transit time
       },
       concealment: {
-        tier1DetectionReduction: 0.10,  // −10% detection chance
-        tier2DetectionReduction: 0.20,  // −20% detection chance
+        tier1DetectionReduction: 0.05,  // −5% detection chance
+        tier2DetectionReduction: 0.12,  // −12% detection chance
+        tier1PiracyMitigation:   0.30,  // −30% piracy chance on ships
+        tier2PiracyMitigation:   0.60,  // −60% piracy chance on ships
+      },
+      range: {
+        // T1: unlocks international contracts; T2: unlocks long_haul contracts
+        // (gates are enforced by vehicleRequirements on generated contracts)
+        tier1PayoutBonus: 0.0,   // range itself gives no payout bonus — it's a capability gate
+        tier2PayoutBonus: 0.0,
       },
     },
   },
@@ -249,24 +268,33 @@ export const CONFIG = {
     },
     // Per-skill effect magnitudes — tune these without touching engine files
     effects: {
-      shadow_1:    { detectionReduction: 0.10 },          // Ghost Protocol: flat detection reduction
-      shadow_2:    { routeHeatExtraDecay: 1 },             // Cold Trail: extra route heat lost per week
-      shadow_3:    { threatBonusMultiplier: 0.50 },  // Counter-Intel: fraction of Inspector/Interpol bonus kept
-      logistics_1: { maintenanceMultiplier: 0.80 },        // Fleet Efficiency: fraction of base maintenance paid
-      logistics_2: { transitTimeMultiplier: 0.90 },        // Express Routes: fraction of base transit time
-      logistics_3: { establishCostMultiplier: 0.75 },      // Trade Deals: fraction of base establishment cost
-      network_1:   { illicitContractBonus: 1 },            // Black Market Access: extra illicit contract slots
-      network_2:   {},                                     // Street Intel: binary (investigator next city shown)
+      shadow_1:    { detectionReduction: 0.05 },          // Ghost Protocol: flat detection reduction
+      shadow_2:    { flaggedDurationReduction: 2 },          // Cover Your Tracks: weeks cut from flagged lockout after bust
+      shadow_3:    { threatBonusMultiplier: 0.50 },         // Counter-Intel: fraction of Inspector/Interpol bonus kept
+      logistics_1: { maintenanceMultiplier: 0.80 },         // Fleet Efficiency: fraction of base maintenance paid
+      logistics_2: { transitTimeMultiplier: 0.90 },         // Express Routes: fraction of base transit time
+      logistics_3: { illicitPayoutBonus: 0.25 },            // Premium Cargo: bonus multiplier on illicit delivery payout
+      network_1:   { illicitContractBonus: 2 },             // Black Market Access: extra illicit contract slots
+      network_2:   { impoundAvoidChance: 0.40 },            // Connections: chance to avoid vehicle impound on Inspector bust
       network_3:   { globalHeatExtraDecay: 3 },            // Heat Sink: extra global heat removed per week
     },
   },
 
+  // ── Rival operation (competitor sabotage) ───────────────────────────────────
+  rival: {
+    appearsOnTurn:       15,   // grace period — no rival threats in early game
+    chancePerWeek:       0.06, // 6% per week; expected once every ~17 weeks
+    ransomFraction:      0.30, // 30% of vehicle purchase price to recover
+    impoundWeeks:        3,    // 3-week window before vehicle is permanently lost
+    informantMitigation: 0.50, // Informant contact halves the chance
+  },
+
   // ── Weather ─────────────────────────────────────────────────────────────────
   weather: {
-    spawnChancePerWeek:  0.12,  // probability a new weather event is generated each week
+    spawnChancePerWeek:  0.15,  // probability a new weather event is generated each week
     maxConcurrentEvents: 2,     // storms above this count are suppressed
     multiRouteChance:    0.40,  // probability a storm hits 2 routes instead of 1
-    activeDurationDays:  2,     // game-days a storm blocks routes once active
+    activeDurationDays:  5,     // game-days a storm blocks routes once active
   },
 
   // ── UI ──────────────────────────────────────────────────────────────────────

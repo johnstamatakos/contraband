@@ -30,14 +30,27 @@ export function appendEvents(state: GameState, newEvents: LiveEvent[]): GameStat
 // ── Win / lose check ──────────────────────────────────────────────────────────
 
 /** Evaluate win/lose conditions and update phase/winState if triggered. */
-export function checkWinLose(state: GameState): GameState {
+export function checkWinLose(state: GameState, gameTimeMs = 0): GameState {
   if (state.winState !== null) return state
-  if (state.cash <= 0)             return { ...state, phase: 'game_over', winState: 'lose_bankrupt' }
-  if (state.reputation <= 0)       return { ...state, phase: 'game_over', winState: 'lose_reputation' }
-  if (getNetWorth(state) >= CONFIG.winLose.netWorthGoal)
+
+  const nw = getNetWorth(state)
+
+  // Bankrupt: can't recover even by liquidating the entire fleet.
+  // Raw cash dips (e.g. maintenance right after buying a vehicle) are not
+  // game-ending as long as fleet resale value keeps net worth positive.
+  if (nw <= 0)                      return { ...state, phase: 'game_over', winState: 'lose_bankrupt' }
+  if (state.reputation <= 0)        return { ...state, phase: 'game_over', winState: 'lose_reputation' }
+  if (nw >= CONFIG.winLose.netWorthGoal)
     return { ...state, phase: 'game_over', winState: 'win_networth' }
   if (state.reputation >= CONFIG.winLose.reputationWinAt)
     return { ...state, phase: 'game_over', winState: 'win_reputation' }
+
+  // Warn when cash goes negative but the operation is still solvent
+  if (state.cash < 0) {
+    const warning = makeEvent(gameTimeMs, `Cash negative ($${state.cash.toLocaleString()}) — complete deliveries or sell a vehicle to recover.`, 'danger')
+    return appendEvents(state, [warning])
+  }
+
   return state
 }
 

@@ -1,6 +1,126 @@
+import { useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 import type { DeliveryRecord } from '../engine/gameState'
 import { formatWeekDate } from '../utils/gameTime'
+import { DetectionBadge } from './DetectionBadge'
+
+// ── P&L bar chart ─────────────────────────────────────────────────────────────
+
+function fmtK(v: number): string {
+  const abs = Math.abs(v)
+  const sign = v < 0 ? '-' : ''
+  return abs >= 1000 ? `${sign}$${(abs / 1000).toFixed(abs >= 10_000 ? 0 : 1)}k` : `${sign}$${abs}`
+}
+
+function ProfitChart({ history }: { history: number[] }) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+
+  const weeks = history.slice(-8)
+
+  if (weeks.length < 2) {
+    return (
+      <p className="text-xs font-mono text-gray-700 text-center py-4 italic">
+        Not enough data — check back in a few weeks.
+      </p>
+    )
+  }
+
+  const W = 440, H = 160
+  const padL = 6, padR = 6, padT = 30, padB = 22
+  const chartW = W - padL - padR
+  const chartH = H - padT - padB
+  const n      = weeks.length
+  const gap    = 6
+  const barW   = Math.floor((chartW - gap * (n - 1)) / n)
+
+  const maxAbs  = Math.max(...weeks.map(Math.abs), 1)
+  const hasNeg  = weeks.some(v => v < 0)
+  const zeroY   = hasNeg ? padT + chartH / 2 : padT + chartH
+  const maxBarH = (hasNeg ? chartH / 2 : chartH) - 4
+
+  const getBarY = (v: number) => zeroY - (v / maxAbs) * maxBarH
+  const getX    = (i: number) => padL + i * (barW + gap)
+  const total   = weeks.reduce((a, b) => a + b, 0)
+
+  // Hover tooltip (full value)
+  const hIdx = hoveredIdx
+  const hv   = hIdx !== null ? weeks[hIdx]! : 0
+  const tooltipLabel = hIdx !== null
+    ? `Wk ${history.length - weeks.length + hIdx + 1}: ${hv >= 0 ? '+' : ''}$${Math.abs(hv).toLocaleString()}`
+    : ''
+  const tooltipW = tooltipLabel.length * 5.4 + 12
+  const tooltipX = hIdx !== null
+    ? Math.min(Math.max(getX(hIdx) + barW / 2 - tooltipW / 2, padL), W - padR - tooltipW)
+    : 0
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs font-mono mb-2">
+        <span className="text-gray-600 uppercase tracking-widest">P&amp;L — last {n} weeks</span>
+        <span className={total >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+          {total >= 0 ? '+' : ''}${total.toLocaleString()} total
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H }}
+        onMouseLeave={() => setHoveredIdx(null)}>
+
+        {/* Zero baseline */}
+        <line x1={padL} y1={zeroY} x2={W - padR} y2={zeroY}
+          stroke="#4b5563" strokeWidth="1" strokeDasharray="3,3" />
+
+        {/* Bars + labels */}
+        {weeks.map((v, i) => {
+          const x      = getX(i)
+          const barY   = getBarY(v)
+          const barTop = Math.min(barY, zeroY)
+          const barH   = Math.max(Math.abs(zeroY - barY), 2)
+          const isHov  = hoveredIdx === i
+          const weekNum = history.length - weeks.length + i + 1
+
+          const color  = v >= 0
+            ? (isHov ? '#34d399' : '#10b981')
+            : (isHov ? '#f87171' : '#ef4444')
+
+          // Abbreviated value label above positive / below negative bars
+          const valY = v >= 0 ? barTop - 5 : barTop + barH + 12
+
+          return (
+            <g key={i} onMouseEnter={() => setHoveredIdx(i)} style={{ cursor: 'default' }}>
+              <rect x={x} y={barTop} width={barW} height={barH}
+                fill={color} rx="2" opacity={isHov ? 1 : 0.78} />
+              <text x={x + barW / 2} y={valY}
+                textAnchor="middle" fontSize="8.5"
+                fill={color} fontFamily="ui-monospace,monospace"
+                fontWeight={isHov ? 'bold' : 'normal'}>
+                {(v >= 0 ? '+' : '') + fmtK(v)}
+              </text>
+              <text x={x + barW / 2} y={H - 4}
+                textAnchor="middle" fontSize="7.5"
+                fill={isHov ? '#d1d5db' : '#6b7280'}
+                fontFamily="ui-monospace,monospace">
+                W{weekNum}
+              </text>
+            </g>
+          )
+        })}
+
+        {/* Full-value tooltip on hover */}
+        {hIdx !== null && (
+          <>
+            <rect x={tooltipX} y={4} width={tooltipW} height={15}
+              rx="2" fill="#111827" stroke="#374151" strokeWidth="0.75" />
+            <text x={tooltipX + tooltipW / 2} y={14.5}
+              textAnchor="middle" fontSize="8" fill="#f9fafb"
+              fontFamily="ui-monospace,monospace">
+              {tooltipLabel}
+            </text>
+          </>
+        )}
+      </svg>
+    </div>
+  )
+}
+
 
 function DeliveryRow({ d }: { d: DeliveryRecord }) {
   if (d.wasBust) {
@@ -11,7 +131,12 @@ function DeliveryRow({ d }: { d: DeliveryRecord }) {
           <span className="text-gray-400 truncate">{d.origin} → {d.destination}</span>
           <span className="text-gray-600 shrink-0">{d.cargoType}</span>
         </div>
-        <span className="text-red-400 shrink-0 ml-2">BUSTED</span>
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          {d.riskBreakdown && (
+            <DetectionBadge breakdown={d.riskBreakdown} faded />
+          )}
+          <span className="text-red-400">BUSTED</span>
+        </div>
       </div>
     )
   }
@@ -22,14 +147,21 @@ function DeliveryRow({ d }: { d: DeliveryRecord }) {
         <span className="text-gray-300 truncate">{d.origin} → {d.destination}</span>
         <span className="text-gray-600 shrink-0">{d.cargoType}</span>
       </div>
-      <span className="text-emerald-400 shrink-0 ml-2">+${d.payout.toLocaleString()}</span>
+      <div className="flex items-center gap-2 shrink-0 ml-2">
+        {d.riskBreakdown && (
+          <DetectionBadge breakdown={d.riskBreakdown} />
+        )}
+        <span className="text-emerald-400">+${d.payout.toLocaleString()}</span>
+      </div>
     </div>
   )
 }
 
 export function WeeklyReport() {
   const summary = useGameStore(s => s.gameState.lastWeeklySummary)
+  const profitHistory = useGameStore(s => s.gameState.profitHistory)
   const { clearWeeklySummary } = useGameStore()
+  const [deliveriesOpen, setDeliveriesOpen] = useState(false)
 
   if (!summary) return null
 
@@ -52,7 +184,7 @@ export function WeeklyReport() {
 
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-5 w-96 max-h-[80vh] flex flex-col">
+        <div className="pointer-events-auto bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-5 w-[560px] max-h-[92vh] flex flex-col">
 
           {/* Header */}
           <div className="text-xs font-mono uppercase tracking-widest text-gray-500 mb-3 border-b border-gray-800 pb-2 shrink-0">
@@ -62,29 +194,36 @@ export function WeeklyReport() {
             </span>
           </div>
 
-          {/* Deliveries list */}
-          {summary.completedDeliveries.length > 0 ? (
-            <div className="mb-3 overflow-y-auto shrink-0 max-h-48">
-              <div className="text-xs font-mono text-gray-600 uppercase tracking-widest mb-1">
-                Deliveries
-                <span className="ml-1 text-gray-700">({summary.completedDeliveries.length})</span>
-              </div>
-              <div>
-                {summary.completedDeliveries.map((d, i) => (
-                  <DeliveryRow key={i} d={d} />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="text-xs font-mono text-gray-700 mb-3 italic">No deliveries this week.</div>
-          )}
+          {/* Deliveries list — collapsible */}
+          <div className="mb-3 shrink-0">
+            {summary.completedDeliveries.length > 0 ? (
+              <>
+                <button
+                  onClick={() => setDeliveriesOpen(o => !o)}
+                  className="w-full flex items-center justify-between text-xs font-mono text-gray-600 uppercase tracking-widest mb-1 hover:text-gray-400 transition-colors"
+                >
+                  <span>Deliveries <span className="text-gray-700 normal-case tracking-normal">({summary.completedDeliveries.length})</span></span>
+                  <span>{deliveriesOpen ? '▴' : '▾'}</span>
+                </button>
+                {deliveriesOpen && (
+                  <div className="overflow-y-auto max-h-64">
+                    {summary.completedDeliveries.map((d, i) => (
+                      <DeliveryRow key={i} d={d} />
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-xs font-mono text-gray-700 italic">No deliveries this week.</div>
+            )}
+          </div>
 
           {/* Cash breakdown */}
           <div className="space-y-1 mb-3 shrink-0">
-            {summary.fixedCosts > 0 && (
+            {summary.maintenanceCost > 0 && (
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-gray-500">Fixed costs</span>
-                <span className="text-red-400">-${summary.fixedCosts.toLocaleString()}</span>
+                <span className="text-gray-500">Fleet maintenance</span>
+                <span className="text-red-400">-${summary.maintenanceCost.toLocaleString()}</span>
               </div>
             )}
             {summary.deliveryIncome > 0 && (
@@ -137,10 +276,15 @@ export function WeeklyReport() {
             </div>
           )}
 
+          {/* P&L chart */}
+          <div className="border-t border-gray-800 pt-3 mt-1 shrink-0">
+            <ProfitChart history={profitHistory} />
+          </div>
+
           {/* Dismiss button */}
           <button
             onClick={handleDismiss}
-            className="w-full py-2 text-xs font-mono bg-gray-800 hover:bg-gray-700 text-gray-300 rounded transition-colors mt-1 shrink-0"
+            className="w-full py-2 text-xs font-mono bg-gray-800 hover:bg-gray-700 text-gray-300 rounded transition-colors mt-3 shrink-0"
           >
             Resume
           </button>

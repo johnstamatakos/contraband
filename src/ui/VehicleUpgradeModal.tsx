@@ -1,9 +1,7 @@
 import { useGameStore } from '../store/gameStore'
 import { CONFIG } from '../engine/config'
 import { VEHICLE_ICON } from './vehicleConstants'
-import type { Vehicle } from '../engine/gameState'
-
-type UpgradeType = 'cargo' | 'engine' | 'concealment'
+import type { Vehicle, UpgradeType } from '../engine/gameState'
 
 interface UpgradeDef {
   type: UpgradeType
@@ -30,6 +28,12 @@ const UPGRADES: UpgradeDef[] = [
     label: 'Concealment',
     tier1Effect: `−${Math.round(CONFIG.vehicleUpgrades.effects.concealment.tier1DetectionReduction * 100)}% detection chance`,
     tier2Effect: `−${Math.round(CONFIG.vehicleUpgrades.effects.concealment.tier2DetectionReduction * 100)}% detection chance`,
+  },
+  {
+    type: 'range',
+    label: 'Fuel Tank',
+    tier1Effect: 'Unlocks international contracts',
+    tier2Effect: 'Unlocks long-haul contracts',
   },
 ]
 
