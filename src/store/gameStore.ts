@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
+import { saveStorage } from './saveStorage'
 import type { GameState, Vehicle, VehicleType, Route, RouteTier, ShipmentInTransit, UpgradeType } from '../engine/gameState'
 import { VEHICLE_SPECS, ROUTE_COSTS, getNetWorth, canEstablishRoute, DEFAULT_UPGRADES, DEFAULT_LIFETIME_STATS } from '../engine/gameState'
 import { resolveWeeklyTick, resolveArrival, resolveSmuggleHopArrival } from '../engine/turnEngine'
@@ -103,7 +105,7 @@ interface GameStore {
   cycleSpeed: () => void
   hasStarted: boolean
   startGame: () => void
-  testMode: boolean
+  savedTimeMs: number
 
   // Real-time actions (called by useGameClock)
   weeklyTick: (weekNumber: number, gameTimeMs: number) => void
@@ -171,7 +173,9 @@ function detectNewImpounds(prevFleet: Vehicle[], nextFleet: Vehicle[], gameTimeM
     }))
 }
 
-export const useGameStore = create<GameStore>((set, get) => {
+export const useGameStore = create<GameStore>()(
+  persist(
+    (set, get) => {
   // Wrappers for action modules (they only need gameState access)
   const stateGet = () => ({ gameState: get().gameState })
   const stateSet = (u: { gameState: GameState }) => set(u)
@@ -181,10 +185,14 @@ export const useGameStore = create<GameStore>((set, get) => {
   isPaused: false,
   gameSpeed: 1,
   hasStarted: false,
-  testMode: false,
+  savedTimeMs: 0,
   threatAlerts: [],
 
-  togglePause: () => set(s => ({ isPaused: !s.isPaused })),
+  togglePause: () => set(s => ({
+    isPaused: !s.isPaused,
+    // Snapshot the clock whenever the player pauses so restores land at the right time
+    savedTimeMs: !s.isPaused ? currentGameTimeMs : s.savedTimeMs,
+  })),
   cycleSpeed: () => set(s => ({ gameSpeed: s.gameSpeed === 1 ? 2 : s.gameSpeed === 2 ? 4 : 1 })),
   startGame: () => set({ hasStarted: true }),
 
@@ -194,7 +202,7 @@ export const useGameStore = create<GameStore>((set, get) => {
   ...createSkillActions(stateGet, stateSet),
 
   weeklyTick: (weekNumber, gameTimeMs) => {
-    const { gameState, testMode } = get()
+    const { gameState } = get()
     if (gameState.phase === 'game_over') return
     let { state } = resolveWeeklyTick(gameState, weekNumber, gameTimeMs)
 
@@ -212,17 +220,17 @@ export const useGameStore = create<GameStore>((set, get) => {
     state = { ...state, lifetimeStats: stats }
     state = { ...state, lifetimeStats: peakStats(state) }
 
-    if (testMode && state.phase === 'game_over') state = { ...state, phase: 'player_actions', winState: null }
     const newAlerts = detectNewImpounds(gameState.fleet, state.fleet, gameTimeMs)
     set(s => ({
       gameState: state,
       threatAlerts: [...s.threatAlerts, ...newAlerts],
       isPaused: newAlerts.length > 0 ? true : s.isPaused,
+      savedTimeMs: gameTimeMs,
     }))
   },
 
   resolveArrival: (shipmentId, gameTimeMs) => {
-    const { gameState, testMode } = get()
+    const { gameState } = get()
     if (gameState.phase === 'game_over') return
 
     // Route smuggle shipments to the smuggle resolver
@@ -274,7 +282,6 @@ export const useGameStore = create<GameStore>((set, get) => {
     state = { ...state, lifetimeStats: stats }
     state = { ...state, lifetimeStats: peakStats(state) }
 
-    if (testMode && state.phase === 'game_over') state = { ...state, phase: 'player_actions', winState: null }
     const newAlerts = detectNewImpounds(gameState.fleet, state.fleet, gameTimeMs)
     set(s => ({
       gameState: state,
@@ -352,7 +359,10 @@ export const useGameStore = create<GameStore>((set, get) => {
       gameSpeed: 1,
       hasStarted: false,
       threatAlerts: [],
+      savedTimeMs: 0,
     })
+    // Wipe the persisted save so the next load starts fresh
+    saveStorage.removeItem('cb_sv')
   },
 
   clearWeeklySummary: () => {
@@ -602,4 +612,22 @@ export const useGameStore = create<GameStore>((set, get) => {
   },
 
   netWorth: () => getNetWorth(get().gameState),
-}})
+}
+    },
+    {
+      name: 'cb_sv',
+      storage: createJSONStorage(() => saveStorage),
+      partialize: (s) => ({
+        gameState:    s.gameState,
+        hasStarted:   s.hasStarted,
+        isPaused:     true,        // always restore paused regardless of how player left
+        gameSpeed:    s.gameSpeed,
+        threatAlerts: s.threatAlerts,
+        savedTimeMs:  s.savedTimeMs,
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.savedTimeMs) setCurrentGameTimeMs(state.savedTimeMs)
+      },
+    },
+  ),
+)

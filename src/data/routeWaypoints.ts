@@ -33,4 +33,18 @@ export const ROUTE_VISUAL_WAYPOINTS: Record<string, [number, number][]> = {
 
   'route_miami_sao_paulo':    [[-56, 16], [-34, -7], [-38, -18], [-42, -23]],
   'route_sao_paulo_miami':    [[-42, -23], [-38, -18], [-34, -7], [-56, 16]],
+
+  // ── London / Rotterdam → Dubai: Bay of Biscay → Gibraltar → Mediterranean → Suez → Red Sea ──
+  // Straight line cuts through Eastern Europe, Turkey, Iraq — all land.
+  'route_london_dubai':    [[-4, 36], [15, 37], [32, 31], [43, 12], [56, 12]],
+  'route_dubai_london':    [[56, 12], [43, 12], [32, 31], [15, 37], [-4, 36]],
+  'route_rotterdam_dubai': [[-2, 38], [15, 37], [32, 31], [43, 12], [56, 12]],
+  'route_dubai_rotterdam': [[56, 12], [43, 12], [32, 31], [15, 37], [-2, 38]],
+
+  // ── Dubai / Mumbai → Singapore: Arabian Sea → south of India → Bay of Bengal → Malacca ──
+  // Straight line clips southern India (Cape Comorin ~77°E 8°N). Route goes around.
+  'route_dubai_singapore':  [[60, 18], [72, 5], [88, 3], [100, 2]],
+  'route_singapore_dubai':  [[100, 2], [88, 3], [72, 5], [60, 18]],
+  'route_mumbai_singapore': [[72, 5], [88, 3], [100, 2]],
+  'route_singapore_mumbai': [[100, 2], [88, 3], [72, 5]],
 }

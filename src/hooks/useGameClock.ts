@@ -15,17 +15,48 @@ export function useGameClock() {
   const gameTimeMsRef = useRef(0)
   const lastRafTimeRef = useRef<number | null>(null)
   const lastWeekRef = useRef(0)
+  const seededRef = useRef(false)
+  const prevGameVersionRef = useRef<number | null>(null)
   const [displayTimeMs, setDisplayTimeMs] = useState(0)
 
-  // Watch gameVersion to reset on new game
+  // Watch gameVersion — reset clock only when newGame() is called, not on initial mount
+  // (initial mount with a restored save must NOT reset the clock to 0).
   const gameVersion = useGameStore(s => s.gameState.gameVersion)
   useEffect(() => {
+    if (prevGameVersionRef.current === null) {
+      // First mount — skip the reset; clock will be seeded by the hydration subscription below
+      prevGameVersionRef.current = gameVersion
+      return
+    }
+    // gameVersion changed = newGame() was called
+    prevGameVersionRef.current = gameVersion
+    seededRef.current = false
     gameTimeMsRef.current = 0
     lastRafTimeRef.current = null
     lastWeekRef.current = 0
     setCurrentGameTimeMs(0)
     setDisplayTimeMs(0)
   }, [gameVersion])
+
+  // Seed clock from persisted save once async hydration completes.
+  // savedTimeMs transitions 0 → restored value after localStorage is read.
+  useEffect(() => {
+    const unsub = useGameStore.subscribe((state, prevState) => {
+      if (
+        !seededRef.current &&
+        state.savedTimeMs > 0 &&
+        prevState.savedTimeMs === 0 &&
+        gameTimeMsRef.current === 0
+      ) {
+        seededRef.current = true
+        gameTimeMsRef.current = state.savedTimeMs
+        setCurrentGameTimeMs(state.savedTimeMs)
+        setDisplayTimeMs(state.savedTimeMs)
+        lastWeekRef.current = Math.floor(state.savedTimeMs / WEEK_MS)
+      }
+    })
+    return unsub
+  }, [])
 
   // 100ms interval: sync displayTimeMs for React rendering (clock display)
   useEffect(() => {

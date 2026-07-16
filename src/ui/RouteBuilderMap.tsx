@@ -4,6 +4,7 @@ import { createProjection, projectCoord, zoomViewport, DEFAULT_VIEWPORT } from '
 import type { Viewport } from '../map/projection'
 import { drawWorldToCanvas } from '../map/worldCanvas'
 import { ROUTE_VISUAL_WAYPOINTS } from '../data/routeWaypoints'
+import { smoothSegment } from '../map/routeLayer'
 import type { Route } from '../engine/gameState'
 import type { GeoProjection } from 'd3-geo'
 
@@ -62,15 +63,21 @@ function drawRouteLine(
   }
 
   const waypoints = ROUTE_VISUAL_WAYPOINTS[routeId]
-  ctx.beginPath()
-  ctx.moveTo(fromPos[0], fromPos[1])
+  const pts: [number, number][] = [fromPos]
   if (waypoints) {
     for (const [lon, lat] of waypoints) {
       const wp = projectCoord(projection, lon, lat)
-      if (wp) ctx.lineTo(wp[0], wp[1])
+      if (wp) pts.push(wp)
     }
   }
-  ctx.lineTo(toPos[0], toPos[1])
+  pts.push(toPos)
+
+  const smoothPts = smoothSegment(pts)
+  ctx.beginPath()
+  ctx.moveTo(smoothPts[0]![0], smoothPts[0]![1])
+  for (let i = 1; i < smoothPts.length; i++) {
+    ctx.lineTo(smoothPts[i]![0], smoothPts[i]![1])
+  }
   ctx.stroke()
 }
 

@@ -24,32 +24,6 @@ function NewGameButton() {
   )
 }
 
-function TestModeButton() {
-  const testMode = useGameStore(s => s.testMode)
-  const handleClick = () => {
-    useGameStore.setState(s => ({
-      testMode: true,
-      gameState: {
-        ...s.gameState,
-        cash: 1_000_000,
-        reputation: 60,
-        routes: s.gameState.routes.map(r => r.status === 'closed' ? { ...r, status: 'open' as const, turnsUntilOpen: null, openAtMs: null } : r),
-      },
-    }))
-  }
-  return (
-    <button
-      onClick={handleClick}
-      className={`fixed bottom-4 left-4 z-50 px-3 py-1.5 text-xs font-mono border rounded transition-colors ${
-        testMode
-          ? 'bg-yellow-700 border-yellow-500 text-yellow-200'
-          : 'bg-yellow-900 hover:bg-yellow-800 text-yellow-300 border-yellow-700'
-      }`}
-    >
-      {testMode ? 'TEST MODE ON' : 'TEST +$50K'}
-    </button>
-  )
-}
 
 type SidebarTab = 'contracts' | 'fleet' | 'skills'
 
@@ -117,8 +91,6 @@ export function App() {
       {/* Start screen (shown before first game start) */}
       <StartScreen />
 
-      {/* Temporary test button */}
-      <TestModeButton />
     </div>
   )
 }

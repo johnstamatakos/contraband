@@ -28,6 +28,39 @@ function routeVisible(route: Route, filter: VehicleFilter): boolean {
   return route.allowedVehicles.some(v => filter[v])
 }
 
+// ── Catmull-Rom smoothing ─────────────────────────────────────────────────────
+
+/** Single Catmull-Rom point at t ∈ [0,1] between P1 and P2 given neighbours P0, P3. */
+export function catmullRomPt(
+  p0: [number, number], p1: [number, number],
+  p2: [number, number], p3: [number, number],
+  t: number,
+): [number, number] {
+  const t2 = t * t, t3 = t2 * t
+  return [
+    0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+    0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3),
+  ]
+}
+
+/**
+ * Expand a screen-space polyline into a smooth Catmull-Rom path.
+ * Only smooths when pts.length >= 3 (route has at least one waypoint).
+ * End tangents are clamped by duplicating first/last control points.
+ */
+export function smoothSegment(pts: [number, number][], subdivisions = 16): [number, number][] {
+  if (pts.length < 3) return pts
+  const cp = [pts[0]!, ...pts, pts[pts.length - 1]!]
+  const result: [number, number][] = [pts[0]!]
+  for (let i = 1; i < cp.length - 2; i++) {
+    const p0 = cp[i - 1]!, p1 = cp[i]!, p2 = cp[i + 1]!, p3 = cp[i + 2]!
+    for (let j = 1; j <= subdivisions; j++) {
+      result.push(catmullRomPt(p0, p1, p2, p3, j / subdivisions))
+    }
+  }
+  return result
+}
+
 // ── Antimeridian helpers ───────────────────────────────────────────────────────
 
 function crossesAntimeridian(lon1: number, lon2: number): boolean {
@@ -110,7 +143,7 @@ export function getRouteSegments(
 
       if (exitPt && entryPt) {
         current.push(exitPt)
-        if (current.length >= 2) segments.push(current)
+        if (current.length >= 2) segments.push(smoothSegment(current))
         current = [entryPt, next]
       } else {
         // Projection couldn't resolve the edge point — fall back to direct line
@@ -121,7 +154,7 @@ export function getRouteSegments(
     }
   }
 
-  if (current.length >= 2) segments.push(current)
+  if (current.length >= 2) segments.push(smoothSegment(current))
   return segments
 }
 
