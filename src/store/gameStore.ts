@@ -549,6 +549,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         departureTimeMs: currentGameTimeMs,
         frozenDurationMs: 0,
         smuggleRunId: null,
+        reversed: false,
       }
       newShipments = [...newShipments, shipment]
       updatedLegs = updatedLegs.map((l, i) =>
@@ -934,6 +935,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         departureTimeMs: currentGameTimeMs,
         frozenDurationMs: 0,
         smuggleRunId,
+        reversed: firstRoute.origin !== path[0]!,
       })
       hops[0]!.shipmentIds.push(shipId)
     }

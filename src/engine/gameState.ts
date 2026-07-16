@@ -146,6 +146,7 @@ export interface ShipmentInTransit {
   departureTimeMs: number // real-time ms when assigned; drives Pixi progress
   frozenDurationMs: number // accumulated ms of weather delay (extends arrival)
   smuggleRunId: SmuggleRunId | null  // non-null when this shipment is part of a smuggling run
+  reversed: boolean                  // true when traveling opposite to route.origin→destination direction
 }
 
 export interface WeatherEvent {

@@ -282,6 +282,7 @@ export function resolveArrival(
           departureTimeMs:  gameTimeMs,
           frozenDurationMs: 0,
           smuggleRunId:     null,
+          reversed:         false,
         }
         finalShipments = [...finalShipments, newShip]
         newShipmentIds.push(newShipId)
@@ -335,6 +336,7 @@ export function resolveArrival(
       departureTimeMs:  gameTimeMs,
       frozenDurationMs: 0,
       smuggleRunId:     null,
+      reversed:         false,
     }
 
     const rvi = finalFleet.findIndex(v => v.id === shipment.vehicleId)
@@ -641,6 +643,7 @@ export function resolveSmuggleHopArrival(
             departureTimeMs: gameTimeMs,
             frozenDurationMs: 0,
             smuggleRunId: run.id,
+            reversed: nextRoute.origin !== nextHop.origin,
           })
           nextShipmentIds.push(newShipId)
 

@@ -266,7 +266,8 @@ export function drawVehicles(
     if (!route) continue
 
     const vehicle  = fleet.find(v => v.id === shipment.vehicleId)
-    const progress = displayProgress.get(shipment.id) ?? 0
+    const rawProgress = displayProgress.get(shipment.id) ?? 0
+    const progress = shipment.reversed ? 1 - rawProgress : rawProgress
 
     const segs = getRouteSegments(route, cityMap, projection, waypoints)
     if (!segs.length) continue

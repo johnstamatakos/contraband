@@ -224,6 +224,7 @@ function stepRepairRecurring(state: GameState, gameTimeMs: number): StepResult {
       departureTimeMs: gameTimeMs,
       frozenDurationMs: 0,
       smuggleRunId: null,
+      reversed: false,
     }
 
     shipmentsInTransit = [...shipmentsInTransit, newShipment]
