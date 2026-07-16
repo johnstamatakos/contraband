@@ -16,6 +16,7 @@ interface RouteBuilderMapProps {
   interpolCityId: string | null
   interpolAdditionalIds: string[]
   onCityClick: (cityId: string) => void
+  onBacktrack: (cityId: string) => void
 }
 
 const HIT_RADIUS = 14
@@ -59,6 +60,7 @@ export function RouteBuilderMap({
   interpolCityId,
   interpolAdditionalIds,
   onCityClick,
+  onBacktrack,
 }: RouteBuilderMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -261,6 +263,7 @@ export function RouteBuilderMap({
     if (!canvas) return
 
     const onMouseDown = (e: MouseEvent) => {
+      e.stopPropagation() // Prevent main map from receiving drag events
       if (e.button !== 0) return
       dragRef.current = {
         startX: e.clientX,
@@ -275,6 +278,7 @@ export function RouteBuilderMap({
       const dx = e.clientX - dragRef.current.startX
       const dy = e.clientY - dragRef.current.startY
       if (Math.abs(dx) < 3 && Math.abs(dy) < 3) return
+      didDragRef.current = true
       viewportRef.current = {
         ...viewportRef.current,
         panX: dragRef.current.panX + dx,
@@ -300,9 +304,11 @@ export function RouteBuilderMap({
     }
   }, [draw])
 
+  // Track whether a drag actually moved (to distinguish from clicks)
+  const didDragRef = useRef(false)
+
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Don't register click if we were dragging
-    if (dragRef.current) return
+    if (didDragRef.current) { didDragRef.current = false; return }
     const canvas = canvasRef.current
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
@@ -321,10 +327,19 @@ export function RouteBuilderMap({
       }
     }
 
-    if (nearest && reachable.has(nearest) && !pathSet.has(nearest)) {
+    if (!nearest) return
+
+    // Backtrack: click a city already in the path (not the source) to truncate
+    if (pathSet.has(nearest) && nearest !== sourceCity) {
+      onBacktrack(nearest)
+      return
+    }
+
+    // Add new hop
+    if (reachable.has(nearest) && !pathSet.has(nearest)) {
       onCityClick(nearest)
     }
-  }, [reachable, pathSet, onCityClick])
+  }, [reachable, pathSet, onCityClick, onBacktrack, sourceCity])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (dragRef.current) { setTooltip(null); return }
@@ -357,7 +372,7 @@ export function RouteBuilderMap({
       setTooltip(null)
     }
 
-    const isClickable = nearest && reachable.has(nearest) && !pathSet.has(nearest)
+    const isClickable = nearest && ((reachable.has(nearest) && !pathSet.has(nearest)) || (pathSet.has(nearest) && nearest !== sourceCity))
     canvas.style.cursor = isClickable ? 'pointer' : 'default'
   }, [networkCities, reachable, pathSet])
 
@@ -413,7 +428,8 @@ export function RouteBuilderMap({
         if (!city) return null
         const isThreat = allThreatCities.has(tooltip.cityId)
         const isDest = destinationCityIds.has(tooltip.cityId)
-        const isClickable = reachable.has(tooltip.cityId) && !pathSet.has(tooltip.cityId)
+        const isInPath = pathSet.has(tooltip.cityId) && tooltip.cityId !== sourceCity
+        const isClickable = (reachable.has(tooltip.cityId) && !pathSet.has(tooltip.cityId)) || isInPath
         return (
           <div
             className="absolute bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs font-mono shadow-xl pointer-events-none z-10"
@@ -422,7 +438,8 @@ export function RouteBuilderMap({
             <span className="text-white font-semibold">{city.name}</span>
             {isThreat && <span className="text-red-400 ml-1.5">THREAT</span>}
             {isDest && <span className="text-amber-400 ml-1.5">SELLS HERE</span>}
-            {isClickable && <span className="text-gray-500 ml-1.5">click to add</span>}
+            {isInPath && <span className="text-yellow-500 ml-1.5">click to backtrack</span>}
+            {isClickable && !isInPath && <span className="text-gray-500 ml-1.5">click to add</span>}
           </div>
         )
       })()}

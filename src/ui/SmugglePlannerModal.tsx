@@ -119,6 +119,16 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
     setVolume(0)
   }, [])
 
+  const handleBacktrack = useCallback((cityId: string) => {
+    setBuiltPath(prev => {
+      const idx = prev.indexOf(cityId)
+      if (idx <= 0) return prev
+      return prev.slice(0, idx + 1)
+    })
+    setSelectedVehicleIds([])
+    setVolume(0)
+  }, [])
+
   const handleUndo = useCallback(() => {
     if (builtPath.length <= 1) return
     setBuiltPath(prev => prev.slice(0, -1))
@@ -307,6 +317,7 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
                   interpolCityId={gameState.interpol.currentCityId}
                   interpolAdditionalIds={gameState.interpol.additionalCityIds}
                   onCityClick={handleCityClick}
+                onBacktrack={handleBacktrack}
                 />
               </div>
             )}
@@ -389,10 +400,12 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
               </div>
             )}
 
-            {/* Risk */}
-            {hopData.length > 0 && effectiveVolume > 0 && (
+            {/* Risk — show as soon as there are hops, even before vehicle selection */}
+            {hopData.length > 0 && (
               <div className="bg-gray-800/60 rounded-lg p-2.5 space-y-1">
-                <div className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider">Risk</div>
+                <div className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider">
+                  Risk{selectedVehicleIds.length === 0 ? ' (estimated)' : ''}
+                </div>
                 {hopData.map((h, i) => (
                   <HopRiskRow key={i}
                     label={`${getCityName(h.origin)} → ${getCityName(h.destination)}`}
