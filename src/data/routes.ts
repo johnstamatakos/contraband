@@ -55,6 +55,7 @@ const ROUTE_SPECS: RouteSpec[] = [
 
   // ── North America to South America / Caribbean (ocean — no trucks) ────────
   { origin: 'miami',       destination: 'bogota',      tier: 'regional',      open: false, allowedVehicles: ['plane'], travelDays: { plane: 2 } },  // 3.5hr flight; Bogotá is inland at 2600m — no port
+  { origin: 'houston',     destination: 'bogota',      tier: 'regional',      open: false, allowedVehicles: ['plane'], travelDays: { plane: 2 } },  // 4hr flight; alternate to Miami→Bogotá
   { origin: 'miami',       destination: 'sao_paulo',   tier: 'international', open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 5, plane: 2 } },  // 9hr flight
   { origin: 'new_york',    destination: 'sao_paulo',   tier: 'international', open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 6, plane: 2 } },  // 10hr flight
 
@@ -68,6 +69,7 @@ const ROUTE_SPECS: RouteSpec[] = [
   { origin: 'london',      destination: 'frankfurt',   tier: 'regional',      open: false, allowedVehicles: ['truck', 'plane'],         travelDays: { truck: 2, plane: 1 } },  // 650mi via ferry, 2hr flight
   { origin: 'london',      destination: 'madrid',      tier: 'regional',      open: false, allowedVehicles: ['truck', 'plane'],         travelDays: { truck: 3, plane: 2 } },  // 1000mi via ferry, 2.5hr flight
   { origin: 'rotterdam',   destination: 'frankfurt',   tier: 'regional',      open: false, allowedVehicles: ['truck', 'plane'],         travelDays: { truck: 1, plane: 1 } },  // 250mi, 3hr drive
+  { origin: 'madrid',      destination: 'frankfurt',   tier: 'regional',      open: false, allowedVehicles: ['truck', 'plane'],         travelDays: { truck: 2, plane: 1 } },  // 1450mi, bypasses London
 
   // ── Europe to Middle East / Africa (plane only for inland, ship+plane for coastal) ─
   { origin: 'frankfurt',   destination: 'dubai',       tier: 'international', open: false, allowedVehicles: ['plane'],        travelDays: { plane: 2 } },           // 6hr flight
@@ -85,6 +87,7 @@ const ROUTE_SPECS: RouteSpec[] = [
   { origin: 'mumbai',      destination: 'singapore',   tier: 'international', open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 5, plane: 2 } }, // 6hr flight
   { origin: 'singapore',   destination: 'bangkok',     tier: 'regional',      open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 3, plane: 1 } }, // 2hr flight
   { origin: 'singapore',   destination: 'hong_kong',   tier: 'regional',      open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 4, plane: 2 } }, // 3.5hr flight
+  { origin: 'bangkok',     destination: 'hong_kong',   tier: 'regional',      open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 4, plane: 2 } }, // 2.5hr flight; bypasses Singapore
   { origin: 'singapore',   destination: 'shanghai',    tier: 'international', open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 4, plane: 2 } }, // 5hr flight
   { origin: 'hong_kong',   destination: 'shanghai',    tier: 'regional',      open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 3, plane: 1 } }, // 2hr flight
   { origin: 'hong_kong',   destination: 'tokyo',       tier: 'regional',      open: false, allowedVehicles: ['ship', 'plane'], travelDays: { ship: 4, plane: 2 } }, // 4hr flight
