@@ -1,6 +1,18 @@
 import { create } from 'zustand'
-import type { GameState, Vehicle, VehicleType, Route, RouteTier, ShipmentInTransit, UpgradeType, SmuggleRun, SmuggleRunHop, LifetimeStats } from '../engine/gameState'
+import type { GameState, Vehicle, VehicleType, Route, RouteTier, ShipmentInTransit, UpgradeType } from '../engine/gameState'
 import { VEHICLE_SPECS, ROUTE_COSTS, getNetWorth, canEstablishRoute, DEFAULT_UPGRADES, DEFAULT_LIFETIME_STATS } from '../engine/gameState'
+import { resolveWeeklyTick, resolveArrival, resolveSmuggleHopArrival } from '../engine/turnEngine'
+import { generateContracts } from '../engine/contracts'
+import { getAllRoutes } from '../data/routes'
+import { DAY_MS } from '../engine/constants'
+import { getCityName } from '../data/cities'
+import { CONFIG } from '../engine/config'
+import { bumpStats, bumpCommoditySmuggled, peakStats } from './statsHelpers'
+import { createVehicleActions, resetVehicleCounter } from './vehicleActions'
+import { createSmuggleActions } from './smuggleActions'
+import { createSkillActions } from './skillActions'
+
+export type { SmuggleRunConfig } from './smuggleActions'
 
 export interface ThreatAlert {
   id: string
@@ -10,58 +22,11 @@ export interface ThreatAlert {
   fine: number
   expiresOnTurn: number
 }
-export interface SmuggleRunConfig {
-  sourceCity: string
-  destinationCity: string
-  commodityKey: string
-  volume: number
-  path: string[]          // ordered city IDs: [source, ..., destination]
-  vehicleIds: string[]
-  sellPricePerUnit: number
-  repReward: number
-}
-
-import { SKILL_BY_ID } from '../data/skills'
-import { getAvailablePurchases } from '../data/commodities'
-import { findRouteBetween } from '../engine/pathfinding'
-import { resolveWeeklyTick, resolveArrival, resolveSmuggleHopArrival } from '../engine/turnEngine'
-import { generateContracts } from '../engine/contracts'
-import { getAllRoutes } from '../data/routes'
-import { DAY_MS } from '../engine/constants'
-import { getCityName } from '../data/cities'
-import { CONFIG } from '../engine/config'
 
 // ─── Shared game-time snapshot (updated by useGameClock, read by assignVehicle) ─
 export let currentGameTimeMs = 0
 export function setCurrentGameTimeMs(ms: number): void {
   currentGameTimeMs = ms
-}
-
-// ─── Lifetime stats helper ───────────────────────────────────────────────────
-
-function bumpStats(stats: LifetimeStats, delta: Partial<LifetimeStats>): LifetimeStats {
-  const next = { ...stats }
-  for (const [k, v] of Object.entries(delta)) {
-    if (typeof v === 'number' && typeof (next as Record<string, unknown>)[k] === 'number') {
-      (next as Record<string, number>)[k] = ((next as Record<string, number>)[k] ?? 0) + v
-    }
-  }
-  return next
-}
-
-function bumpCommoditySmuggled(stats: LifetimeStats, key: string, qty: number): LifetimeStats {
-  const totals = { ...stats.totalCommoditiesSmuggled }
-  totals[key] = (totals[key] ?? 0) + qty
-  return { ...stats, totalCommoditiesSmuggled: totals }
-}
-
-function peakStats(state: GameState): LifetimeStats {
-  return {
-    ...state.lifetimeStats,
-    peakCash: Math.max(state.lifetimeStats.peakCash, state.cash),
-    peakReputation: Math.max(state.lifetimeStats.peakReputation, state.reputation),
-    largestFleetSize: Math.max(state.lifetimeStats.largestFleetSize, state.fleet.filter(v => !v.isImpounded).length),
-  }
 }
 
 // ─── Initial state factory ────────────────────────────────────────────────────
@@ -189,9 +154,6 @@ interface GameStore {
   netWorth: () => number
 }
 
-// ─── Vehicle counter for unique IDs ──────────────────────────────────────────
-let vehicleCounter = 3
-
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 // ── Helper: detect newly impounded vehicles and build alerts ─────────────────
@@ -209,7 +171,12 @@ function detectNewImpounds(prevFleet: Vehicle[], nextFleet: Vehicle[], gameTimeM
     }))
 }
 
-export const useGameStore = create<GameStore>((set, get) => ({
+export const useGameStore = create<GameStore>((set, get) => {
+  // Wrappers for action modules (they only need gameState access)
+  const stateGet = () => ({ gameState: get().gameState })
+  const stateSet = (u: { gameState: GameState }) => set(u)
+
+  return {
   gameState: createInitialState(),
   isPaused: false,
   gameSpeed: 1,
@@ -220,6 +187,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   togglePause: () => set(s => ({ isPaused: !s.isPaused })),
   cycleSpeed: () => set(s => ({ gameSpeed: s.gameSpeed === 1 ? 2 : s.gameSpeed === 2 ? 4 : 1 })),
   startGame: () => set({ hasStarted: true }),
+
+  // Extracted action modules
+  ...createVehicleActions(stateGet, stateSet),
+  ...createSmuggleActions(stateGet, stateSet),
+  ...createSkillActions(stateGet, stateSet),
 
   weeklyTick: (weekNumber, gameTimeMs) => {
     const { gameState, testMode } = get()
@@ -371,7 +343,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   newGame: () => {
-    vehicleCounter = 3
+    resetVehicleCounter()
     currentGameTimeMs = 0
     const initialState = createInitialState()
     set({
@@ -385,50 +357,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   clearWeeklySummary: () => {
     set(s => ({ gameState: { ...s.gameState, lastWeeklySummary: null } }))
-  },
-
-  buyVehicle: (type: VehicleType) => {
-    const { gameState } = get()
-    const spec = VEHICLE_SPECS[type]
-    if (gameState.cash < spec.purchasePrice) return
-
-    const id = `${type}_${String(vehicleCounter).padStart(2, '0')}`
-    vehicleCounter++
-    const typeLabel = type.charAt(0).toUpperCase() + type.slice(1)
-
-    const vehicle: Vehicle = {
-      id,
-      type,
-      name: `${typeLabel} #${vehicleCounter - 1}`,
-      ...spec,
-      isAssigned: false,
-      currentShipmentId: null,
-      upgrades: { ...DEFAULT_UPGRADES },
-      isImpounded: false,
-      impoundFine: null,
-      impoundExpiresOnTurn: null,
-    }
-
-    const newEvent = {
-      id: `e_buy_${id}`,
-      gameTimeMs: currentGameTimeMs,
-      message: `Purchased ${vehicle.name} for $${spec.purchasePrice.toLocaleString()}.`,
-      type: 'success' as const,
-    }
-
-    const newFleet = [...gameState.fleet, vehicle]
-    set({
-      gameState: {
-        ...gameState,
-        cash: gameState.cash - spec.purchasePrice,
-        fleet: newFleet,
-        events: [...gameState.events, newEvent].slice(-50),
-        lifetimeStats: {
-          ...bumpStats(gameState.lifetimeStats, { totalMoneySpent: spec.purchasePrice, vehiclesPurchased: 1 }),
-          largestFleetSize: Math.max(gameState.lifetimeStats.largestFleetSize, newFleet.length),
-        },
-      },
-    })
   },
 
   establishRoute: (routeId: string) => {
@@ -603,46 +531,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     })
   },
 
-  upgradeVehicle: (vehicleId, upgradeType) => {
-    const { gameState } = get()
-    const vehicle = gameState.fleet.find(v => v.id === vehicleId)
-    if (!vehicle) return
-
-    const currentTier = vehicle.upgrades[upgradeType]
-    if (currentTier >= 2) return
-
-    const nextTier = (currentTier + 1) as 1 | 2
-    const fraction = nextTier === 1
-      ? CONFIG.vehicleUpgrades.tier1CostFraction
-      : CONFIG.vehicleUpgrades.tier2CostFraction
-    const cost = Math.round(vehicle.purchasePrice * fraction)
-    if (gameState.cash < cost) return
-
-    const UPGRADE_LABELS: Record<UpgradeType, string> = {
-      cargo: 'Cargo Hold', engine: 'Engine', concealment: 'Concealment', range: 'Fuel Tank',
-    }
-    const newEvent = {
-      id: `e_upgrade_${vehicleId}_${upgradeType}_${currentGameTimeMs}`,
-      gameTimeMs: currentGameTimeMs,
-      message: `${vehicle.name}: ${UPGRADE_LABELS[upgradeType]} upgraded to Tier ${nextTier}. -$${cost.toLocaleString()}`,
-      type: 'success' as const,
-    }
-
-    set({
-      gameState: {
-        ...gameState,
-        cash: gameState.cash - cost,
-        fleet: gameState.fleet.map(v =>
-          v.id === vehicleId
-            ? { ...v, upgrades: { ...v.upgrades, [upgradeType]: nextTier } }
-            : v,
-        ),
-        events: [...gameState.events, newEvent].slice(-50),
-        lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: cost }),
-      },
-    })
-  },
-
   cancelRecurringContract: (contractId) => {
     const { gameState } = get()
     const contract = gameState.contracts.find(c => c.id === contractId)
@@ -704,130 +592,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     })
   },
 
-  payImpoundFine: (vehicleId) => {
-    const { gameState } = get()
-    const vehicle = gameState.fleet.find(v => v.id === vehicleId)
-    if (!vehicle || !vehicle.isImpounded || vehicle.impoundFine === null) return
-    if (gameState.cash < vehicle.impoundFine) return
-
-    const newEvent = {
-      id: `e_impound_${vehicleId}_${currentGameTimeMs}`,
-      gameTimeMs: currentGameTimeMs,
-      message: `${vehicle.name} recovered from impound. -$${vehicle.impoundFine.toLocaleString()}`,
-      type: 'success' as const,
-    }
-
-    set({
-      gameState: {
-        ...gameState,
-        cash: gameState.cash - vehicle.impoundFine,
-        fleet: gameState.fleet.map(v =>
-          v.id === vehicleId
-            ? { ...v, isImpounded: false, impoundFine: null, impoundExpiresOnTurn: null }
-            : v,
-        ),
-        events: [...gameState.events, newEvent].slice(-50),
-        lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: vehicle.impoundFine }),
-      },
-    })
-  },
-
-  sellVehicle: (vehicleId) => {
-    const { gameState } = get()
-    const vehicle = gameState.fleet.find(v => v.id === vehicleId)
-    if (!vehicle) return
-    if (vehicle.isAssigned || vehicle.isImpounded) return
-    const availableCount = gameState.fleet.filter(v => !v.isImpounded).length
-    if (availableCount <= 1) return
-
-    const newEvent = {
-      id: `e_sell_${vehicleId}_${currentGameTimeMs}`,
-      gameTimeMs: currentGameTimeMs,
-      message: `Sold ${vehicle.name} for $${vehicle.resaleValue.toLocaleString()}.`,
-      type: 'info' as const,
-    }
-
-    set({
-      gameState: {
-        ...gameState,
-        cash:   gameState.cash + vehicle.resaleValue,
-        fleet:  gameState.fleet.filter(v => v.id !== vehicleId),
-        events: [...gameState.events, newEvent].slice(-50),
-      },
-    })
-  },
-
-  payDownHeat: () => {
-    const { gameState } = get()
-    const { cost, heatReduction, cooldownWeeks } = CONFIG.layLow
-    if (gameState.cash < cost) return
-    if (gameState.globalHeat <= 0) return
-    if (gameState.turn - (gameState.lastLayLowTurn ?? 0) < cooldownWeeks) return
-
-    const newHeat = Math.max(0, gameState.globalHeat - heatReduction)
-    const newEvent = {
-      id: `e_laylow_${currentGameTimeMs}`,
-      gameTimeMs: currentGameTimeMs,
-      message: `Laying low — heat reduced by ${gameState.globalHeat - newHeat}. -$${cost.toLocaleString()}`,
-      type: 'info' as const,
-    }
-
-    set({
-      gameState: {
-        ...gameState,
-        cash: gameState.cash - cost,
-        globalHeat: newHeat,
-        lastLayLowTurn: gameState.turn,
-        events: [...gameState.events, newEvent].slice(-50),
-        lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: cost }),
-      },
-    })
-  },
-
-  unlockSkill: (skillId) => {
-    const { gameState } = get()
-    const skill = SKILL_BY_ID.get(skillId)
-    if (!skill) return
-    if (gameState.unlockedSkills.includes(skillId)) return
-
-    const repRequired = CONFIG.skills.tierRepRequirements[`tier${skill.tier}` as 'tier1' | 'tier2' | 'tier3']
-    if (gameState.reputation < repRequired) return
-
-    if (skill.tier > 1) {
-      const prereqId = `${skill.branch}_${skill.tier - 1}`
-      if (!gameState.unlockedSkills.includes(prereqId)) return
-    }
-
-    const cost = CONFIG.skills.tierCashCosts[`tier${skill.tier}` as 'tier1' | 'tier2' | 'tier3']
-    if (gameState.cash < cost) return
-
-    const newEvent = {
-      id: `e_skill_${skillId}_${currentGameTimeMs}`,
-      gameTimeMs: currentGameTimeMs,
-      message: `Skill unlocked: ${skill.name}`,
-      type: 'success' as const,
-    }
-
-    // network_2 (Street Intel): reveal Inspector and Interpol on map
-    const revealsThreats = skillId === 'network_2'
-
-    set({
-      gameState: {
-        ...gameState,
-        cash: gameState.cash - cost,
-        unlockedSkills: [...gameState.unlockedSkills, skillId],
-        inspector: revealsThreats
-          ? { ...gameState.inspector, isTrackedByInformant: true }
-          : gameState.inspector,
-        interpol: revealsThreats
-          ? { ...gameState.interpol, isTrackedByInformant: true }
-          : gameState.interpol,
-        events: [...gameState.events, newEvent].slice(-50),
-        lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: cost, skillsUnlocked: 1 }),
-      },
-    })
-  },
-
   declineContract: (contractId: string) => {
     set(s => ({
       gameState: {
@@ -837,158 +601,5 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }))
   },
 
-  purchaseCommodity: (cityId, commodityKey, quantity) => {
-    if (quantity <= 0) return
-    const { gameState } = get()
-
-    // Validate this city exports this commodity
-    const available = getAvailablePurchases(cityId)
-    const commodity = available.find(c => c.key === commodityKey)
-    if (!commodity) return
-
-    const totalCost = commodity.buyPrice * quantity
-    if (gameState.cash < totalCost) return
-
-    // Update per-city inventory
-    const cityInv = { ...gameState.cityInventory }
-    const cityStock = { ...(cityInv[cityId] ?? {}) }
-    cityStock[commodityKey] = (cityStock[commodityKey] ?? 0) + quantity
-    cityInv[cityId] = cityStock
-
-    const newEvent = {
-      id: `e_buy_${commodityKey}_${currentGameTimeMs}`,
-      gameTimeMs: currentGameTimeMs,
-      message: `Purchased ${quantity} ${commodity.displayName} in ${getCityName(cityId)} for $${totalCost.toLocaleString()}`,
-      type: 'info' as const,
-    }
-
-    set({
-      gameState: {
-        ...gameState,
-        cash: gameState.cash - totalCost,
-        cityInventory: cityInv,
-        events: [...gameState.events, newEvent].slice(-CONFIG.ui.eventFeedCap),
-        lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: totalCost }),
-      },
-    })
-  },
-
-  launchSmuggleRun: (config) => {
-    const { gameState } = get()
-    const { sourceCity, destinationCity, commodityKey, volume, path, vehicleIds, sellPricePerUnit, repReward } = config
-
-    // Validate inventory
-    const cityInv = gameState.cityInventory[sourceCity]
-    if (!cityInv || (cityInv[commodityKey] ?? 0) < volume) return
-
-    // Validate path has at least 2 cities
-    if (path.length < 2 || path[0] !== sourceCity || path[path.length - 1] !== destinationCity) return
-
-    // Validate all vehicles exist, are idle, and not impounded
-    const vehicles = vehicleIds.map(id => gameState.fleet.find(v => v.id === id)).filter(Boolean) as Vehicle[]
-    if (vehicles.length !== vehicleIds.length) return
-    if (vehicles.some(v => v.isAssigned || v.isImpounded)) return
-
-    // Build hops and validate every route segment is open + allows all vehicle types
-    const hops: SmuggleRunHop[] = []
-    for (let i = 0; i < path.length - 1; i++) {
-      const route = findRouteBetween(path[i]!, path[i + 1]!, gameState.routes)
-      if (!route) return
-      for (const v of vehicles) {
-        if (!route.allowedVehicles.includes(v.type)) return
-      }
-      hops.push({
-        origin: path[i]!,
-        destination: path[i + 1]!,
-        routeId: route.id,
-        routeTier: route.tier,
-        status: i === 0 ? 'in_transit' : 'pending',
-        shipmentIds: [],
-        departureTimeMs: i === 0 ? currentGameTimeMs : null,
-      })
-    }
-
-    // Get commodity info for the buy price
-    const commodityDef = CONFIG.smuggling.commodities[commodityKey as keyof typeof CONFIG.smuggling.commodities]
-    if (!commodityDef) return
-
-    const smuggleRunId = `smg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-
-    // Create shipments for hop 0 (one per vehicle)
-    const newShipments: ShipmentInTransit[] = []
-    const firstRoute = findRouteBetween(path[0]!, path[1]!, gameState.routes)!
-    for (const v of vehicles) {
-      const travelDays = firstRoute.travelDays[v.type]
-      if (!travelDays) return
-      const shipId = `ship_smg_${Date.now()}_${v.id}`
-      newShipments.push({
-        id: shipId,
-        contractId: '',  // not a contract
-        vehicleId: v.id,
-        routeId: firstRoute.id,
-        legIndex: 0,
-        turnsRemaining: travelDays,
-        totalTurns: travelDays,
-        isIllicit: true,
-        isFrozen: false,
-        departureTimeMs: currentGameTimeMs,
-        frozenDurationMs: 0,
-        smuggleRunId,
-        reversed: firstRoute.origin !== path[0]!,
-      })
-      hops[0]!.shipmentIds.push(shipId)
-    }
-
-    const smuggleRun: SmuggleRun = {
-      id: smuggleRunId,
-      commodityKey,
-      volume,
-      buyPricePerUnit: commodityDef.buyPrice,
-      sellPricePerUnit,
-      expectedPayout: volume * sellPricePerUnit,
-      sourceCity,
-      destinationCity,
-      hops,
-      currentHopIndex: 0,
-      vehicleIds,
-      repReward,
-      status: 'in_transit',
-      createdAtTurn: gameState.turn,
-      completedAtTurn: null,
-    }
-
-    // Deduct inventory
-    const updatedCityInv = { ...gameState.cityInventory }
-    const updatedCityStock = { ...(updatedCityInv[sourceCity] ?? {}) }
-    updatedCityStock[commodityKey] = (updatedCityStock[commodityKey] ?? 0) - volume
-    if (updatedCityStock[commodityKey]! <= 0) delete updatedCityStock[commodityKey]
-    updatedCityInv[sourceCity] = updatedCityStock
-
-    // Mark vehicles assigned
-    const updatedFleet = gameState.fleet.map(v =>
-      vehicleIds.includes(v.id)
-        ? { ...v, isAssigned: true, currentShipmentId: newShipments.find(s => s.vehicleId === v.id)?.id ?? null }
-        : v,
-    )
-
-    const event = {
-      id: `e_smg_launch_${smuggleRunId}`,
-      gameTimeMs: currentGameTimeMs,
-      message: `Smuggling ${volume} ${commodityDef.displayName}: ${getCityName(sourceCity)} → ${getCityName(destinationCity)} (${hops.length} hops, ${vehicles.length} vehicle${vehicles.length > 1 ? 's' : ''})`,
-      type: 'warning' as const,
-    }
-
-    set({
-      gameState: {
-        ...gameState,
-        cityInventory: updatedCityInv,
-        smuggleRuns: [...gameState.smuggleRuns, smuggleRun],
-        shipmentsInTransit: [...gameState.shipmentsInTransit, ...newShipments],
-        fleet: updatedFleet,
-        events: [...gameState.events, event].slice(-CONFIG.ui.eventFeedCap),
-      },
-    })
-  },
-
   netWorth: () => getNetWorth(get().gameState),
-}))
+}})
