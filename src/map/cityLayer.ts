@@ -96,15 +96,14 @@ export function buildCityLayer(
       cityNode.addChild(label)
     }
 
-    // Inventory badge — small amber diamond, hidden by default
+    // Inventory badge — small amber diamond, positioned above the city dot
     const badge = new Graphics()
     const badgeSize = 3
-    const dotR = TIER_RADIUS[city.tier]
     badge.rect(-badgeSize, -badgeSize, badgeSize * 2, badgeSize * 2)
     badge.fill(0xf59e0b) // amber-500
     badge.stroke({ color: 0x92400e, width: 0.5 }) // amber-900 border
-    badge.x = dotR + 2
-    badge.y = -(dotR + 2)
+    badge.x = 0
+    badge.y = -(TIER_RADIUS[city.tier] + 7)
     badge.rotation = Math.PI / 4 // rotate 45° for diamond shape
     badge.visible = false
     cityNode.addChild(badge)
