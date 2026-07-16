@@ -147,6 +147,64 @@ export const CITY_COMMODITIES: Record<string, CityCommod> = {
   },
 }
 
+// ─── Smuggling commodity helpers ─────────────────────────────────────────────
+
+import { CONFIG } from '../engine/config'
+
+/** Build a reverse map from display name → config key (e.g. 'Narcotics' → 'narcotics'). */
+function buildDisplayNameToKeyMap(): Record<string, string> {
+  const map: Record<string, string> = {}
+  for (const [key, def] of Object.entries(CONFIG.smuggling.commodities)) {
+    map[def.displayName] = key
+  }
+  return map
+}
+
+/**
+ * Returns illicit commodities available for purchase at a given city.
+ * Cross-references the city's illicitExports with CONFIG.smuggling.commodities.
+ */
+export function getAvailablePurchases(
+  cityId: string,
+): Array<{ key: string; displayName: string; icon: string; buyPrice: number; tier: number }> {
+  const city = CITY_COMMODITIES[cityId]
+  if (!city) return []
+
+  const nameToKey = buildDisplayNameToKeyMap()
+  const results: Array<{ key: string; displayName: string; icon: string; buyPrice: number; tier: number }> = []
+
+  for (const exportName of city.illicitExports) {
+    const key = nameToKey[exportName]
+    if (!key) continue
+    const def = CONFIG.smuggling.commodities[key as keyof typeof CONFIG.smuggling.commodities]
+    if (!def) continue
+    results.push({
+      key,
+      displayName: def.displayName,
+      icon: def.icon,
+      buyPrice: def.buyPrice,
+      tier: def.tier,
+    })
+  }
+
+  return results
+}
+
+/**
+ * Returns all cities that import a given commodity, with their sell prices.
+ */
+export function getSellDestinations(
+  commodityKey: string,
+): Array<{ cityId: string; sellPrice: number }> {
+  const def = CONFIG.smuggling.commodities[commodityKey as keyof typeof CONFIG.smuggling.commodities]
+  if (!def) return []
+
+  return Object.entries(def.sellPrices).map(([cityId, sellPrice]) => ({
+    cityId,
+    sellPrice,
+  }))
+}
+
 /**
  * Find a commodity that the origin city exports and the destination imports.
  * Returns the matched commodity name or null if no match exists.

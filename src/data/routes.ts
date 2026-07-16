@@ -22,7 +22,6 @@ function makeRoute(spec: RouteSpec): Route {
     tier: spec.tier,
     status: spec.open ? 'open' : 'closed',
     heat: 0,
-    illicitLayerActive: false,
     turnsUntilOpen: null,
     openAtMs: null,
     allowedVehicles: spec.allowedVehicles,

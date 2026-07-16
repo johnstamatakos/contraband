@@ -2,11 +2,6 @@ import { useGameStore } from '../store/gameStore'
 import { getNetWorth } from '../engine/gameState'
 
 const WIN_STATE_MESSAGES: Record<string, { title: string; subtitle: string; color: string }> = {
-  win_networth: {
-    title: 'YOU WIN',
-    subtitle: '$2M net worth reached. The operation is untouchable.',
-    color: 'text-yellow-400',
-  },
   win_reputation: {
     title: 'YOU WIN',
     subtitle: 'Reputation at 100. You are a legend in the underworld.',

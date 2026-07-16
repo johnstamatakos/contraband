@@ -18,7 +18,6 @@ export const CONFIG = {
 
   // ── Win / lose thresholds ───────────────────────────────────────────────────
   winLose: {
-    netWorthGoal:        2_000_000,  // cash + fleet resale value to win
     reputationWinAt:     100,      // max reputation to trigger rep-win
     // Lose conditions: cash <= 0  OR  reputation <= 0  (no threshold to configure)
   },
@@ -64,10 +63,10 @@ export const CONFIG = {
   // ── Route costs & unlock requirements ───────────────────────────────────────
   routes: {
     costs: {
-      domestic:      { establish: 1_000,  illicit: 500   },
-      regional:      { establish: 3_000,  illicit: 1_500 },
-      international: { establish: 10_000, illicit: 5_000 },
-      long_haul:     { establish: 20_000, illicit: 10_000 },
+      domestic:      { establish: 1_000 },
+      regional:      { establish: 3_000 },
+      international: { establish: 10_000 },
+      long_haul:     { establish: 20_000 },
     },
     // Minimum reputation required to establish a route of each tier
     repRequirements: {
@@ -100,7 +99,6 @@ export const CONFIG = {
     maxPerCity:   2,   // max contracts involving the same city on the board
 
     commodityMatchBonus: 1.25,  // +25% payout when cargo matches city export→import flow
-    illicitMaxPerRoute: 1,     // max illicit contracts per route pair on the board
 
     // Multi-leg contracts
     multiLeg: {
@@ -115,12 +113,12 @@ export const CONFIG = {
     deadlineMin:  3,   // minimum weeks to complete a contract
     deadlineMax:  5,   // maximum weeks to complete a contract
 
-    // Cash payout per unit of cargo
+    // Cash payout per unit of cargo (legit supply contracts)
     payoutPerUnit: {
-      domestic:      { legit: 50,  illicit: 150 },
-      regional:      { legit: 90,  illicit: 260 },
-      international: { legit: 160, illicit: 420 },
-      long_haul:     { legit: 280, illicit: 700 },
+      domestic:      { legit: 50 },
+      regional:      { legit: 90 },
+      international: { legit: 160 },
+      long_haul:     { legit: 280 },
     },
 
     // Volume (units) generated per contract
@@ -131,31 +129,14 @@ export const CONFIG = {
       long_haul:     { min: 40, max: 120 },
     },
 
-    // Rep reward for completing an illicit contract
-    illicitRepReward: {
-      domestic:      2,
-      regional:      3,
-      international: 4,
-      long_haul:     6,
-    },
-
-    // Late-game high-value bonus contract (2× volume multiplier)
-    highValueBonus: {
-      enabledFromTurn:     13,
-      reputationRequired:  60,
-      volumeMultiplier:    2,
-    },
-
     // Recurring supply-run contracts (auto-redispatch indefinitely until interrupted)
     recurring: {
-      // All legit contracts are recurring supply runs — no one-shot legit jobs
       legitSpawnChance: {
         domestic:      1.0,
         regional:      1.0,
         international: 1.0,
         long_haul:     1.0,
       },
-      illicitSpawnChance: 0,   // no illicit recurring — they're one-shot decisions
 
       // 999 = indefinite sentinel; vehicle loops until busted or piracy
       runs: {
@@ -295,6 +276,109 @@ export const CONFIG = {
     maxConcurrentEvents: 2,     // storms above this count are suppressed
     multiRouteChance:    0.40,  // probability a storm hits 2 routes instead of 1
     activeDurationDays:  5,     // game-days a storm blocks routes once active
+  },
+
+  // ── Commodity smuggling ──────────────────────────────────────────────────────
+  smuggling: {
+    // Per-commodity pricing: buyPrice at source cities, sellPrices at destination cities
+    commodities: {
+      narcotics: {
+        displayName: 'Narcotics',
+        icon: '💊',
+        tier: 1 as const,
+        buyPrice: 100,
+        sellPrices: {
+          chicago: 250, houston: 250, miami: 270, new_york: 280,
+          los_angeles: 260, toronto: 240,
+          london: 400, rotterdam: 380, madrid: 370,
+          dubai: 480, singapore: 500, tokyo: 540, hong_kong: 490,
+        } as Record<string, number>,
+      },
+      counterfeit_electronics: {
+        displayName: 'Counterfeit Electronics',
+        icon: '📱',
+        tier: 1 as const,
+        buyPrice: 120,
+        sellPrices: {
+          chicago: 280, new_york: 300, toronto: 260, los_angeles: 270,
+          london: 420, singapore: 440,
+        } as Record<string, number>,
+      },
+      smuggled_currency: {
+        displayName: 'Smuggled Currency',
+        icon: '💵',
+        tier: 2 as const,
+        buyPrice: 250,
+        sellPrices: {
+          miami: 500, london: 620, frankfurt: 650, madrid: 580,
+          tokyo: 780, bangkok: 720, shanghai: 750,
+        } as Record<string, number>,
+      },
+      forged_documents: {
+        displayName: 'Forged Documents',
+        icon: '📋',
+        tier: 2 as const,
+        buyPrice: 300,
+        sellPrices: {
+          frankfurt: 550, dubai: 700, mumbai: 750,
+          sao_paulo: 680, bangkok: 720,
+        } as Record<string, number>,
+      },
+      black_market_pharma: {
+        displayName: 'Black Market Pharma',
+        icon: '💉',
+        tier: 2 as const,
+        buyPrice: 200,
+        sellPrices: {
+          new_york: 520, london: 550, frankfurt: 530,
+          dubai: 500, tokyo: 600, singapore: 560,
+        } as Record<string, number>,
+      },
+      restricted_tech: {
+        displayName: 'Restricted Tech',
+        icon: '🔬',
+        tier: 3 as const,
+        buyPrice: 500,
+        sellPrices: {
+          dubai: 1000, mumbai: 1100, nairobi: 1200,
+          sao_paulo: 1050, los_angeles: 950, singapore: 1000,
+        } as Record<string, number>,
+      },
+      contraband_chemicals: {
+        displayName: 'Contraband Chemicals',
+        icon: '⚗️',
+        tier: 3 as const,
+        buyPrice: 400,
+        sellPrices: {
+          rotterdam: 850, london: 820, dubai: 800,
+          singapore: 900, shanghai: 950,
+        } as Record<string, number>,
+      },
+    },
+
+    // Detection modifiers specific to smuggling runs
+    detection: {
+      perExtraVehicle: 0.03,      // +3% per vehicle beyond the first
+      volumeThreshold: 30,        // volume above this incurs penalty
+      perVolumeStep: 0.02,        // +2% per step above threshold
+      volumeStepSize: 20,         // units per penalty step
+    },
+
+    // Rep reward formula: floor(baseTierRep * hopMultiplier * volumeMultiplier)
+    repReward: {
+      baseTierRep: { domestic: 1, regional: 2, international: 4, long_haul: 6 } as Record<string, number>,
+      hopMultiplierStep: 0.3,     // +0.3 per hop beyond the first
+      hopMultiplierCap: 2.0,
+      volumeMultiplierStep: 0.2,  // +0.2 per volumeStepSize units
+      volumeStepSize: 30,
+      volumeMultiplierCap: 0.6,   // max +0.6 volume bonus
+    },
+
+    // Heat consequences on successful smuggle delivery
+    heatOnSuccess: {
+      globalHeatGain: 5,          // global heat added on final-hop delivery
+      routeHeatGain: 1,           // route heat added per route segment used
+    },
   },
 
   // ── UI ──────────────────────────────────────────────────────────────────────

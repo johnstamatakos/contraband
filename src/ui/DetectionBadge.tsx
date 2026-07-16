@@ -20,6 +20,8 @@ export function DetectionBadge({ breakdown, faded = false }: { breakdown: Detect
     { label: 'Global heat', value: breakdown.globalHeat },
     { label: 'Consecutive', value: breakdown.consecutiveRuns },
     { label: 'Threat',      value: breakdown.threatBonus },
+    { label: 'Vehicles',    value: breakdown.vehiclePenalty },
+    { label: 'Volume',      value: breakdown.volumePenalty },
   ].filter(r => r.value > 0.001)
 
   const subRows = [

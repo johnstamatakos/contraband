@@ -8,6 +8,7 @@ export type VehicleId = string
 export type ContractId = string
 export type ShipmentId = string
 export type WeatherEventId = string
+export type SmuggleRunId = string
 
 // ─── Enumerations ────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ export type WeatherType =
   | 'blizzard'
   | 'monsoon'
 export type GamePhase = 'player_actions' | 'resolving' | 'game_over'
-export type WinState = 'win_networth' | 'win_reputation' | 'lose_bankrupt' | 'lose_reputation'
+export type WinState = 'win_reputation' | 'lose_bankrupt' | 'lose_reputation'
 
 // ─── Core entities ────────────────────────────────────────────────────────────
 
@@ -81,7 +82,6 @@ export interface Route {
   tier: RouteTier
   status: RouteStatus
   heat: number // 0–5
-  illicitLayerActive: boolean
   turnsUntilOpen: number | null
   openAtMs: number | null  // real-time ms when pending route opens; null if not pending
   // Vehicle constraints
@@ -94,7 +94,7 @@ export interface Route {
   consecutiveIllicitRuns: number
 }
 
-export const ROUTE_COSTS: Record<RouteTier, { establish: number; illicit: number }> = CONFIG.routes.costs
+export const ROUTE_COSTS: Record<RouteTier, { establish: number }> = CONFIG.routes.costs
 
 // A single leg in a multi-leg contract (or the only leg in a simple contract)
 export interface ContractLeg {
@@ -145,6 +145,7 @@ export interface ShipmentInTransit {
   isFrozen: boolean       // weather freeze
   departureTimeMs: number // real-time ms when assigned; drives Pixi progress
   frozenDurationMs: number // accumulated ms of weather delay (extends arrival)
+  smuggleRunId: SmuggleRunId | null  // non-null when this shipment is part of a smuggling run
 }
 
 export interface WeatherEvent {
@@ -193,6 +194,8 @@ export interface DetectionBreakdown {
   concealmentReduction: number // vehicle concealment upgrade
   legitCover: number           // plausible deniability from legit recurring shipments
   contactsReduction: number    // customs_insider on intl/long-haul
+  vehiclePenalty: number       // smuggling: extra vehicles in convoy
+  volumePenalty: number        // smuggling: large cargo volume
   final: number                // clamped total probability
 }
 
@@ -232,6 +235,36 @@ export interface WeeklyStats {
   deliveries: DeliveryRecord[]
 }
 
+// ─── Commodity smuggling ─────────────────────────────────────────────────────
+
+export interface SmuggleRunHop {
+  origin: CityId
+  destination: CityId
+  routeId: RouteId
+  routeTier: RouteTier
+  status: 'pending' | 'in_transit' | 'cleared' | 'busted'
+  shipmentIds: ShipmentId[]
+  departureTimeMs: number | null
+}
+
+export interface SmuggleRun {
+  id: SmuggleRunId
+  commodityKey: string            // key into CONFIG.smuggling.commodities
+  volume: number                  // units being transported
+  buyPricePerUnit: number         // purchase cost (already deducted)
+  sellPricePerUnit: number        // revenue per unit at destination
+  expectedPayout: number          // volume * sellPricePerUnit
+  sourceCity: CityId              // city where commodity was purchased
+  destinationCity: CityId         // final delivery city
+  hops: SmuggleRunHop[]           // ordered route segments
+  currentHopIndex: number         // which hop is active (0-based)
+  vehicleIds: VehicleId[]         // all vehicles in the convoy
+  repReward: number               // calculated on creation
+  status: 'in_transit' | 'completed' | 'busted'
+  createdAtTurn: number
+  completedAtTurn: number | null
+}
+
 // ─── Root game state ──────────────────────────────────────────────────────────
 
 export interface GameState {
@@ -269,6 +302,11 @@ export interface GameState {
   lastLayLowTurn: number
   // Route IDs of recently completed illicit contracts (cleared per generation cycle)
   recentIllicitCompletions: string[]
+  // ── Commodity smuggling ──
+  // Per-city inventory of purchased illicit commodities
+  cityInventory: Record<string, Record<string, number>>
+  // Active smuggling runs
+  smuggleRuns: SmuggleRun[]
 }
 
 // ─── Derived values ────────────────────────────────────────────────────────────

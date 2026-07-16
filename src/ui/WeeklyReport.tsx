@@ -143,7 +143,7 @@ function DeliveryRow({ d }: { d: DeliveryRecord }) {
   return (
     <div className="flex items-center justify-between text-xs font-mono py-1 border-b border-gray-800/50">
       <div className="flex items-center gap-1.5 min-w-0">
-        <span className={d.isIllicit ? 'text-red-400 shrink-0' : 'text-emerald-400 shrink-0'}>✓</span>
+        <span className={d.isIllicit ? 'text-amber-400 shrink-0' : 'text-emerald-400 shrink-0'}>✓</span>
         <span className="text-gray-300 truncate">{d.origin} → {d.destination}</span>
         <span className="text-gray-600 shrink-0">{d.cargoType}</span>
       </div>

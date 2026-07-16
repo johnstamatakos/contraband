@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GameState, Vehicle, VehicleType, Route, RouteTier, ShipmentInTransit, UpgradeType } from '../engine/gameState'
+import type { GameState, Vehicle, VehicleType, Route, RouteTier, ShipmentInTransit, UpgradeType, SmuggleRun, SmuggleRunHop } from '../engine/gameState'
 import { VEHICLE_SPECS, ROUTE_COSTS, getNetWorth, canEstablishRoute, DEFAULT_UPGRADES } from '../engine/gameState'
 
 export interface ThreatAlert {
@@ -10,8 +10,21 @@ export interface ThreatAlert {
   fine: number
   expiresOnTurn: number
 }
+export interface SmuggleRunConfig {
+  sourceCity: string
+  destinationCity: string
+  commodityKey: string
+  volume: number
+  path: string[]          // ordered city IDs: [source, ..., destination]
+  vehicleIds: string[]
+  sellPricePerUnit: number
+  repReward: number
+}
+
 import { SKILL_BY_ID } from '../data/skills'
-import { resolveWeeklyTick, resolveArrival } from '../engine/turnEngine'
+import { getAvailablePurchases } from '../data/commodities'
+import { findRouteBetween } from '../engine/pathfinding'
+import { resolveWeeklyTick, resolveArrival, resolveSmuggleHopArrival } from '../engine/turnEngine'
 import { generateContracts } from '../engine/contracts'
 import { getAllRoutes } from '../data/routes'
 import { DAY_MS } from '../engine/constants'
@@ -80,6 +93,8 @@ function createInitialState(): GameState {
     hasCompletedFirstIllicit: false,
     lastLayLowTurn: 0,
     recentIllicitCompletions: [],
+    cityInventory: {},
+    smuggleRuns: [],
   }
   return { ...base, contracts: generateContracts(base) }
 }
@@ -108,7 +123,6 @@ interface GameStore {
   newGame: () => void
   buyVehicle: (type: VehicleType) => void
   establishRoute: (routeId: string) => void
-  activateIllicitLayer: (routeId: string) => void
   assignVehicle: (contractId: string, vehicleId: string, legIndex?: number) => void
   clearWeeklySummary: () => void
 
@@ -135,6 +149,10 @@ interface GameStore {
 
   // Skill tree
   unlockSkill: (skillId: string) => void
+
+  // Commodity smuggling
+  purchaseCommodity: (cityId: string, commodityKey: string, quantity: number) => void
+  launchSmuggleRun: (config: SmuggleRunConfig) => void
 
   // Threat alerts (vehicle impounded mid-game)
   threatAlerts: ThreatAlert[]
@@ -192,7 +210,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
   resolveArrival: (shipmentId, gameTimeMs) => {
     const { gameState, testMode } = get()
     if (gameState.phase === 'game_over') return
-    let { state } = resolveArrival(gameState, shipmentId, gameTimeMs)
+
+    // Route smuggle shipments to the smuggle resolver
+    const shipment = gameState.shipmentsInTransit.find(s => s.id === shipmentId)
+    const isSmuggle = shipment?.smuggleRunId != null
+
+    let { state } = isSmuggle
+      ? resolveSmuggleHopArrival(gameState, shipmentId, gameTimeMs)
+      : resolveArrival(gameState, shipmentId, gameTimeMs)
+
     if (testMode && state.phase === 'game_over') state = { ...state, phase: 'player_actions', winState: null }
     const newAlerts = detectNewImpounds(gameState.fleet, state.fleet, gameTimeMs)
     set(s => ({
@@ -360,37 +386,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     })
   },
 
-  activateIllicitLayer: (routeId: string) => {
-    const { gameState } = get()
-    const route = gameState.routes.find(r => r.id === routeId)
-    if (!route || route.status !== 'open' || route.illicitLayerActive) return
 
-    const cost = ROUTE_COSTS[route.tier as RouteTier].illicit
-    if (gameState.cash < cost) return
-
-    const reverseId = `route_${route.destination}_${route.origin}`
-    const updatedRoutes: Route[] = gameState.routes.map(r =>
-      (r.id === routeId || r.id === reverseId) && r.status === 'open'
-        ? { ...r, illicitLayerActive: true }
-        : r,
-    )
-
-    const newEvent = {
-      id: `e_illicit_${routeId}`,
-      gameTimeMs: currentGameTimeMs,
-      message: `Illicit layer activated: ${getCityName(route.origin)} ↔ ${getCityName(route.destination)}. -$${cost.toLocaleString()}`,
-      type: 'warning' as const,
-    }
-
-    set({
-      gameState: {
-        ...gameState,
-        cash: gameState.cash - cost,
-        routes: updatedRoutes,
-        events: [...gameState.events, newEvent].slice(-50),
-      },
-    })
-  },
 
   assignVehicle: (contractId: string, vehicleId: string, legIndex = 0) => {
     const { gameState } = get()
@@ -416,8 +412,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       r.allowedVehicles.includes(vehicle.type),
     )
     if (!route) return
-    if (contract.isIllicit && !route.illicitLayerActive) return
-    if (contract.isIllicit && route.flaggedTurnsRemaining > 0) return
 
     // Check vehicle upgrade requirements
     const reqs = contract.vehicleRequirements
@@ -465,6 +459,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         isFrozen: false,
         departureTimeMs: currentGameTimeMs,
         frozenDurationMs: 0,
+        smuggleRunId: null,
       }
       newShipments = [...newShipments, shipment]
       updatedLegs = updatedLegs.map((l, i) =>
@@ -747,6 +742,157 @@ export const useGameStore = create<GameStore>((set, get) => ({
         contracts: s.gameState.contracts.filter(c => c.id !== contractId),
       },
     }))
+  },
+
+  purchaseCommodity: (cityId, commodityKey, quantity) => {
+    if (quantity <= 0) return
+    const { gameState } = get()
+
+    // Validate this city exports this commodity
+    const available = getAvailablePurchases(cityId)
+    const commodity = available.find(c => c.key === commodityKey)
+    if (!commodity) return
+
+    const totalCost = commodity.buyPrice * quantity
+    if (gameState.cash < totalCost) return
+
+    // Update per-city inventory
+    const cityInv = { ...gameState.cityInventory }
+    const cityStock = { ...(cityInv[cityId] ?? {}) }
+    cityStock[commodityKey] = (cityStock[commodityKey] ?? 0) + quantity
+    cityInv[cityId] = cityStock
+
+    const newEvent = {
+      id: `e_buy_${commodityKey}_${currentGameTimeMs}`,
+      gameTimeMs: currentGameTimeMs,
+      message: `Purchased ${quantity} ${commodity.displayName} in ${getCityName(cityId)} for $${totalCost.toLocaleString()}`,
+      type: 'info' as const,
+    }
+
+    set({
+      gameState: {
+        ...gameState,
+        cash: gameState.cash - totalCost,
+        cityInventory: cityInv,
+        events: [...gameState.events, newEvent].slice(-CONFIG.ui.eventFeedCap),
+      },
+    })
+  },
+
+  launchSmuggleRun: (config) => {
+    const { gameState } = get()
+    const { sourceCity, destinationCity, commodityKey, volume, path, vehicleIds, sellPricePerUnit, repReward } = config
+
+    // Validate inventory
+    const cityInv = gameState.cityInventory[sourceCity]
+    if (!cityInv || (cityInv[commodityKey] ?? 0) < volume) return
+
+    // Validate path has at least 2 cities
+    if (path.length < 2 || path[0] !== sourceCity || path[path.length - 1] !== destinationCity) return
+
+    // Validate all vehicles exist, are idle, and not impounded
+    const vehicles = vehicleIds.map(id => gameState.fleet.find(v => v.id === id)).filter(Boolean) as Vehicle[]
+    if (vehicles.length !== vehicleIds.length) return
+    if (vehicles.some(v => v.isAssigned || v.isImpounded)) return
+
+    // Build hops and validate every route segment is open + allows all vehicle types
+    const hops: SmuggleRunHop[] = []
+    for (let i = 0; i < path.length - 1; i++) {
+      const route = findRouteBetween(path[i]!, path[i + 1]!, gameState.routes)
+      if (!route) return
+      for (const v of vehicles) {
+        if (!route.allowedVehicles.includes(v.type)) return
+      }
+      hops.push({
+        origin: path[i]!,
+        destination: path[i + 1]!,
+        routeId: route.id,
+        routeTier: route.tier,
+        status: i === 0 ? 'in_transit' : 'pending',
+        shipmentIds: [],
+        departureTimeMs: i === 0 ? currentGameTimeMs : null,
+      })
+    }
+
+    // Get commodity info for the buy price
+    const commodityDef = CONFIG.smuggling.commodities[commodityKey as keyof typeof CONFIG.smuggling.commodities]
+    if (!commodityDef) return
+
+    const smuggleRunId = `smg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+
+    // Create shipments for hop 0 (one per vehicle)
+    const newShipments: ShipmentInTransit[] = []
+    const firstRoute = findRouteBetween(path[0]!, path[1]!, gameState.routes)!
+    for (const v of vehicles) {
+      const travelDays = firstRoute.travelDays[v.type]
+      if (!travelDays) return
+      const shipId = `ship_smg_${Date.now()}_${v.id}`
+      newShipments.push({
+        id: shipId,
+        contractId: '',  // not a contract
+        vehicleId: v.id,
+        routeId: firstRoute.id,
+        legIndex: 0,
+        turnsRemaining: travelDays,
+        totalTurns: travelDays,
+        isIllicit: true,
+        isFrozen: false,
+        departureTimeMs: currentGameTimeMs,
+        frozenDurationMs: 0,
+        smuggleRunId,
+      })
+      hops[0]!.shipmentIds.push(shipId)
+    }
+
+    const smuggleRun: SmuggleRun = {
+      id: smuggleRunId,
+      commodityKey,
+      volume,
+      buyPricePerUnit: commodityDef.buyPrice,
+      sellPricePerUnit,
+      expectedPayout: volume * sellPricePerUnit,
+      sourceCity,
+      destinationCity,
+      hops,
+      currentHopIndex: 0,
+      vehicleIds,
+      repReward,
+      status: 'in_transit',
+      createdAtTurn: gameState.turn,
+      completedAtTurn: null,
+    }
+
+    // Deduct inventory
+    const updatedCityInv = { ...gameState.cityInventory }
+    const updatedCityStock = { ...(updatedCityInv[sourceCity] ?? {}) }
+    updatedCityStock[commodityKey] = (updatedCityStock[commodityKey] ?? 0) - volume
+    if (updatedCityStock[commodityKey]! <= 0) delete updatedCityStock[commodityKey]
+    updatedCityInv[sourceCity] = updatedCityStock
+
+    // Mark vehicles assigned
+    const updatedFleet = gameState.fleet.map(v =>
+      vehicleIds.includes(v.id)
+        ? { ...v, isAssigned: true, currentShipmentId: newShipments.find(s => s.vehicleId === v.id)?.id ?? null }
+        : v,
+    )
+
+    const event = {
+      id: `e_smg_launch_${smuggleRunId}`,
+      gameTimeMs: currentGameTimeMs,
+      message: `Smuggling ${volume} ${commodityDef.displayName}: ${getCityName(sourceCity)} → ${getCityName(destinationCity)} (${hops.length} hops, ${vehicles.length} vehicle${vehicles.length > 1 ? 's' : ''})`,
+      type: 'warning' as const,
+    }
+
+    set({
+      gameState: {
+        ...gameState,
+        cityInventory: updatedCityInv,
+        smuggleRuns: [...gameState.smuggleRuns, smuggleRun],
+        shipmentsInTransit: [...gameState.shipmentsInTransit, ...newShipments],
+        fleet: updatedFleet,
+        events: [...gameState.events, event].slice(-CONFIG.ui.eventFeedCap),
+      },
+    })
   },
 
   netWorth: () => getNetWorth(get().gameState),

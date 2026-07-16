@@ -4,10 +4,7 @@ import type { Viewport } from './projection'
 import { drawWorldToCanvas } from './worldCanvas'
 import { initPixiApp } from './pixiApp'
 import type { PixiMapHandle } from './pixiApp'
-import type { VehicleFilter } from './routeLayer'
 import { RoutePanel } from '../ui/RoutePanel'
-import type { VehicleType } from '../engine/gameState'
-import { VEHICLE_ICON, VEHICLE_LABEL } from '../ui/vehicleConstants'
 import { useGameStore, currentGameTimeMs } from '../store/gameStore'
 import { CITY_MAP } from '../data/cities'
 import { CONFIG } from '../engine/config'
@@ -40,10 +37,7 @@ function MapTooltip({ info }: { info: { type: string; id: string; x: number; y: 
         <div className="font-semibold text-white mb-1">{vehicle.name}</div>
         <div className="text-gray-400">{originName} → {destName}</div>
         <div className="text-gray-500">{contract.cargoType} · {contract.volume} units</div>
-        <div className="flex items-center justify-between mt-1.5">
-          <span className={`text-xs ${contract.isIllicit ? 'text-red-400' : 'text-gray-600'}`}>
-            {contract.isIllicit ? 'ILLICIT' : 'LEGIT'}
-          </span>
+        <div className="flex items-center justify-end mt-1.5">
           <span className="text-emerald-400 font-semibold">
             +${effectivePayout.toLocaleString()}{contract.isRecurring ? '/run' : ''}
             {cargoBonus > 0 && (
@@ -116,7 +110,6 @@ export function MapView({ gameTimeMsRef }: MapViewProps) {
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null)
 
   const [selectedCityId, setSelectedCityId] = useState<string | null>(null)
-  const [vehicleFilter, setVehicleFilter] = useState<VehicleFilter>({ truck: true, plane: true, ship: true })
   const [hoveredInfo, setHoveredInfo] = useState<HoverInfo>(null)
 
   // ── Shared redraw: world canvas + pixi projection ─────────────────────────
@@ -191,11 +184,6 @@ export function MapView({ gameTimeMsRef }: MapViewProps) {
       pixiRef.current = null
     }
   }, [handleCityClick, handleStageClick, handleVehicleHover, handleStormHover])
-
-  // Sync vehicle filter to pixi
-  useEffect(() => {
-    pixiRef.current?.setVehicleFilter(vehicleFilter)
-  }, [vehicleFilter])
 
   // ── Zoom (mouse wheel) ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -276,16 +264,6 @@ export function MapView({ gameTimeMsRef }: MapViewProps) {
     redraw(newVp)
   }, [redraw])
 
-  // ── Toggle a vehicle filter ────────────────────────────────────────────────
-  const toggleVehicle = (v: VehicleType) => {
-    setVehicleFilter(prev => {
-      const next = { ...prev, [v]: !prev[v] }
-      // Always keep at least one enabled
-      const anyOn = Object.values(next).some(Boolean)
-      return anyOn ? next : prev
-    })
-  }
-
   return (
     <div
       ref={containerRef}
@@ -299,45 +277,29 @@ export function MapView({ gameTimeMsRef }: MapViewProps) {
       />
       {/* Pixi canvas is appended programmatically above */}
 
-      {/* Vehicle filter toggles */}
-      <div className="absolute top-3 right-3 flex gap-1.5 z-10">
-        {(['truck', 'plane', 'ship'] as VehicleType[]).map(v => (
-          <button
-            key={v}
-            onClick={() => toggleVehicle(v)}
-            title={VEHICLE_LABEL[v]}
-            className={`px-2.5 py-1.5 rounded text-xs font-mono transition-all border ${
-              vehicleFilter[v]
-                ? 'bg-gray-800 border-gray-600 text-white opacity-100'
-                : 'bg-gray-950 border-gray-800 text-gray-600 opacity-50'
-            }`}
-          >
-            {VEHICLE_ICON[v]} {VEHICLE_LABEL[v]}
-          </button>
-        ))}
-        <div className="flex gap-1 ml-1">
-          <button
-            onClick={() => zoomBy(1.25)}
-            title="Zoom in"
-            className="w-7 h-7 flex items-center justify-center rounded text-sm font-mono border bg-gray-950 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
-          >
-            +
-          </button>
-          <button
-            onClick={() => zoomBy(1 / 1.25)}
-            title="Zoom out"
-            className="w-7 h-7 flex items-center justify-center rounded text-sm font-mono border bg-gray-950 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
-          >
-            −
-          </button>
-          <button
-            onClick={() => { viewportRef.current = DEFAULT_VIEWPORT; redraw(DEFAULT_VIEWPORT) }}
-            title="Reset view"
-            className="w-7 h-7 flex items-center justify-center rounded text-sm font-mono border bg-gray-950 border-gray-800 text-gray-500 hover:text-gray-300 transition-colors"
-          >
-            ⊕
-          </button>
-        </div>
+      {/* Zoom controls */}
+      <div className="absolute top-3 right-3 flex gap-1 z-10">
+        <button
+          onClick={() => zoomBy(1.25)}
+          title="Zoom in"
+          className="w-7 h-7 flex items-center justify-center rounded text-sm font-mono border bg-gray-950 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+        >
+          +
+        </button>
+        <button
+          onClick={() => zoomBy(1 / 1.25)}
+          title="Zoom out"
+          className="w-7 h-7 flex items-center justify-center rounded text-sm font-mono border bg-gray-950 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+        >
+          −
+        </button>
+        <button
+          onClick={() => { viewportRef.current = DEFAULT_VIEWPORT; redraw(DEFAULT_VIEWPORT) }}
+          title="Reset view"
+          className="w-7 h-7 flex items-center justify-center rounded text-sm font-mono border bg-gray-950 border-gray-800 text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          ⊕
+        </button>
       </div>
 
       {/* Hint */}

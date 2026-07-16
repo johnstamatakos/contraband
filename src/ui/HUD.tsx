@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { GameClock } from './GameClock'
 import { CONFIG } from '../engine/config'
+import { getCityName } from '../data/cities'
 
 function Meter({
   label,
@@ -28,6 +30,65 @@ function Meter({
           className={`h-full rounded-full transition-all duration-300 ${color}`}
           style={{ width: `${pct}%` }}
         />
+      </div>
+    </div>
+  )
+}
+
+function InventoryStrip({
+  commodities,
+  perCity,
+}: {
+  commodities: [string, number][]
+  perCity: Record<string, Record<string, number>>
+}) {
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null)
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
+
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      <div className="w-px h-10 bg-gray-700" />
+      <div className="flex items-center gap-3">
+        {commodities.map(([key, total]) => {
+          const def = CONFIG.smuggling.commodities[key as keyof typeof CONFIG.smuggling.commodities]
+          if (!def) return null
+          const cities = perCity[key] ?? {}
+
+          return (
+            <div
+              key={key}
+              className="relative flex items-center gap-1 cursor-default"
+              onMouseEnter={e => {
+                setHoveredKey(key)
+                setTooltipPos({ x: e.clientX, y: e.clientY })
+              }}
+              onMouseMove={e => setTooltipPos({ x: e.clientX, y: e.clientY })}
+              onMouseLeave={() => {
+                setHoveredKey(null)
+                setTooltipPos(null)
+              }}
+            >
+              <span className="text-base">{def.icon}</span>
+              <span className="text-xs font-mono font-semibold text-amber-400">{total}</span>
+
+              {/* Tooltip: per-city breakdown */}
+              {hoveredKey === key && tooltipPos && (
+                <div
+                  className="fixed bg-gray-950 border border-gray-700 rounded p-2 text-xs font-mono min-w-[10rem] shadow-xl z-[9999] pointer-events-none"
+                  style={{ left: tooltipPos.x - 50, top: tooltipPos.y + 20 }}
+                >
+                  <div className="text-gray-400 font-semibold mb-1">{def.displayName}</div>
+                  {Object.entries(cities).map(([cityId, qty]) => (
+                    <div key={cityId} className="flex justify-between gap-4">
+                      <span className="text-gray-500">{getCityName(cityId)}</span>
+                      <span className="text-amber-400">{qty}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -72,7 +133,6 @@ export function HUD({ displayTimeMs }: HUDProps) {
         <span className="text-xs text-gray-500 font-mono uppercase tracking-widest">Net Worth</span>
         <span className="text-lg font-bold font-mono text-yellow-400">
           ${nw.toLocaleString()}
-          <span className="text-xs text-gray-500 ml-1">/ ${(CONFIG.winLose.netWorthGoal / 1000).toFixed(0)}K</span>
         </span>
       </div>
 
@@ -111,6 +171,29 @@ export function HUD({ displayTimeMs }: HUDProps) {
           </button>
         </div>
       </div>
+
+      {/* Commodity Inventory */}
+      {(() => {
+        // Aggregate inventory across all cities
+        const totals: Record<string, number> = {}
+        const perCity: Record<string, Record<string, number>> = {}
+        for (const [cid, stock] of Object.entries(gameState.cityInventory)) {
+          for (const [key, qty] of Object.entries(stock)) {
+            if (qty > 0) {
+              totals[key] = (totals[key] ?? 0) + qty
+              if (!perCity[key]) perCity[key] = {}
+              perCity[key]![cid] = qty
+            }
+          }
+        }
+
+        const commodityEntries = Object.entries(totals)
+        if (commodityEntries.length === 0) return null
+
+        return (
+          <InventoryStrip commodities={commodityEntries} perCity={perCity} />
+        )
+      })()}
 
       {/* Logo */}
       <div className="ml-auto shrink-0 select-none" aria-hidden>

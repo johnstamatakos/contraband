@@ -2,8 +2,6 @@ import { useGameStore } from '../store/gameStore'
 import type { Contract, ContractLeg, Vehicle } from '../engine/gameState'
 import { CITY_MAP } from '../data/cities'
 import { VEHICLE_ICON } from './vehicleConstants'
-import { detectionChanceWithBreakdown } from '../engine/detection'
-import { DetectionBadge } from './DetectionBadge'
 import { SKILL_BY_ID } from '../data/skills'
 import { CONFIG } from '../engine/config'
 
@@ -69,8 +67,7 @@ function LegCard({ leg, legIndex, legCount, contract, onAssign }: LegCardProps) 
         (!reqs.concealment || v.upgrades.concealment >= reqs.concealment) &&
         (!reqs.cargo || v.upgrades.cargo >= reqs.cargo) &&
         (!reqs.engine || v.upgrades.engine >= reqs.engine) &&
-        !leg.assignedVehicleIds.includes(v.id) &&
-        (!contract.isIllicit || route.illicitLayerActive),
+        !leg.assignedVehicleIds.includes(v.id),
       )
     : []
 
@@ -79,10 +76,6 @@ function LegCard({ leg, legIndex, legCount, contract, onAssign }: LegCardProps) 
   if (!isAssigned && !isDispatched && !isComplete) {
     if (!route) {
       blockedReason = 'Route not established'
-    } else if (contract.isIllicit && route.flaggedTurnsRemaining > 0) {
-      blockedReason = `Route flagged (${route.flaggedTurnsRemaining}w remaining)`
-    } else if (contract.isIllicit && !route.illicitLayerActive) {
-      blockedReason = 'Activate illicit layer first'
     } else if (eligibleVehicles.length === 0) {
       // Check why
       const typeOk = route ? gameState.fleet.filter(v =>
@@ -230,42 +223,6 @@ export function ContractModal({ contract: contractProp, onClose }: Props) {
   const originCity = CITY_MAP.get(contract.origin)
   const destCity   = CITY_MAP.get(contract.destination)
 
-  // For single-leg contracts: find the route and compute detection
-  const primaryRoute = gameState.routes.find(r =>
-    r.status === 'open' &&
-    r.origin === contract.legs[0]!.origin &&
-    r.destination === contract.legs[0]!.destination,
-  )
-  // Per-route legit cover (not global)
-  const activeLegitRecurring = primaryRoute
-    ? gameState.shipmentsInTransit.filter(
-        s => !s.isIllicit &&
-             s.routeId === primaryRoute.id &&
-             gameState.contracts.find(c => c.id === s.contractId)?.isRecurring,
-      ).length
-    : 0
-
-  // Use the assigned vehicle's actual concealment if available
-  const assignedVehicleId = contract.legs[0]?.assignedVehicleIds[0]
-  const assignedVehicle = assignedVehicleId
-    ? gameState.fleet.find(v => v.id === assignedVehicleId)
-    : null
-  const displayConcealment = (assignedVehicle?.upgrades.concealment ?? 0) as 0 | 1 | 2
-
-  const illicitDetection = (contract.isIllicit && primaryRoute)
-    ? detectionChanceWithBreakdown({
-        route: primaryRoute,
-        allRoutes: gameState.routes,
-        globalHeat: gameState.globalHeat,
-        inspectorCityId: gameState.inspector.currentCityId,
-        interpolCityId: gameState.interpol.currentCityId,
-        unlockedSkills: gameState.unlockedSkills,
-        concealmentTier: displayConcealment,
-        activeLegitRecurringCount: activeLegitRecurring,
-        interpolAdditionalIds: gameState.interpol.additionalCityIds,
-      })
-    : null
-
   const isMultiLeg = contract.legs.length > 1
   const isIndefinite = contract.isRecurring && contract.totalRuns >= 999
 
@@ -297,9 +254,7 @@ export function ContractModal({ contract: contractProp, onClose }: Props) {
         <div className="pointer-events-auto bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
 
           {/* Header */}
-          <div className={`px-4 py-3 border-b flex items-start justify-between gap-3 rounded-t-xl ${
-            contract.isIllicit ? 'border-red-900/60 bg-red-950/20' : 'border-gray-700'
-          }`}>
+          <div className="px-4 py-3 border-b border-gray-700 flex items-start justify-between gap-3 rounded-t-xl">
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-base font-mono font-bold text-white">
@@ -310,11 +265,6 @@ export function ContractModal({ contract: contractProp, onClose }: Props) {
                     MULTI-LEG
                   </span>
                 )}
-                <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
-                  contract.isIllicit ? 'bg-red-900 text-red-300' : 'bg-gray-800 text-gray-400'
-                }`}>
-                  {contract.isIllicit ? 'ILLICIT' : 'LEGIT'}
-                </span>
                 {contract.isRecurring && (
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">∞</span>
                 )}
@@ -410,46 +360,6 @@ export function ContractModal({ contract: contractProp, onClose }: Props) {
                     )
                   })}
                 </div>
-              </div>
-            )}
-
-            {/* Illicit detection breakdown */}
-            {illicitDetection && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs font-mono font-semibold text-gray-400 uppercase tracking-widest">Detection Risk</div>
-                  <DetectionBadge breakdown={illicitDetection.breakdown} />
-                </div>
-                <div className="bg-gray-800/60 rounded-lg px-3 py-2 space-y-1">
-                  {[
-                    ['Base', illicitDetection.breakdown.base],
-                    ['Route heat', illicitDetection.breakdown.routeHeat],
-                    ['Global heat', illicitDetection.breakdown.globalHeat],
-                    ['Consecutive runs', illicitDetection.breakdown.consecutiveRuns],
-                    ['Threat presence', illicitDetection.breakdown.threatBonus],
-                    ['Skills', -illicitDetection.breakdown.skillsReduction],
-                    ['Concealment', -illicitDetection.breakdown.concealmentReduction],
-                    ['Legit cover', -illicitDetection.breakdown.legitCover],
-                  ].filter(([, v]) => (v as number) !== 0).map(([label, value]) => (
-                    <div key={label as string} className="flex justify-between text-xs font-mono">
-                      <span className="text-gray-500">{label as string}</span>
-                      <span className={(value as number) > 0 ? 'text-red-400' : 'text-green-400'}>
-                        {(value as number) > 0 ? '+' : ''}{Math.round((value as number) * 100)}%
-                      </span>
-                    </div>
-                  ))}
-                  <div className="border-t border-gray-700 pt-1 flex justify-between text-xs font-mono font-bold">
-                    <span className="text-gray-300">Final</span>
-                    <span className={illicitDetection.breakdown.final > 0.4 ? 'text-red-400' : illicitDetection.breakdown.final > 0.2 ? 'text-yellow-400' : 'text-green-400'}>
-                      {Math.round(illicitDetection.breakdown.final * 100)}%
-                    </span>
-                  </div>
-                </div>
-                {!assignedVehicle && (
-                  <div className="text-xs font-mono text-gray-600 italic mt-1">
-                    * Without vehicle concealment. Assign a vehicle to see actual risk.
-                  </div>
-                )}
               </div>
             )}
 

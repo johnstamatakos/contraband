@@ -27,6 +27,8 @@ export interface CityLayerHandle {
   cityMap: Map<string, ProjectedCity>
   // Call this instead of rebuilding from scratch when projection changes
   updatePositions: (projection: GeoProjection) => void
+  // Show/hide inventory badges based on per-city inventory
+  updateInventoryBadges: (cityInventory: Record<string, Record<string, number>>) => void
 }
 
 export function buildCityLayer(
@@ -42,6 +44,8 @@ export function buildCityLayer(
 
   // Stable references to each city node (index matches CITIES order)
   const cityNodes: Container[] = []
+  // Inventory badge graphics per city (index matches CITIES order)
+  const inventoryBadges: Graphics[] = []
 
   for (const city of CITIES) {
     const coord = projectCoord(projection, city.lon, city.lat)
@@ -92,6 +96,20 @@ export function buildCityLayer(
       cityNode.addChild(label)
     }
 
+    // Inventory badge — small amber diamond, hidden by default
+    const badge = new Graphics()
+    const badgeSize = 3
+    const dotR = TIER_RADIUS[city.tier]
+    badge.rect(-badgeSize, -badgeSize, badgeSize * 2, badgeSize * 2)
+    badge.fill(0xf59e0b) // amber-500
+    badge.stroke({ color: 0x92400e, width: 0.5 }) // amber-900 border
+    badge.x = dotR + 2
+    badge.y = -(dotR + 2)
+    badge.rotation = Math.PI / 4 // rotate 45° for diamond shape
+    badge.visible = false
+    cityNode.addChild(badge)
+    inventoryBadges.push(badge)
+
     cityNode.on('pointerdown', (e) => {
       e.stopPropagation()
       onCityClick(city.id)
@@ -122,11 +140,22 @@ export function buildCityLayer(
     cityMap = new Map(projectedCities.map(c => [c.id, c]))
   }
 
+  // ── Show/hide inventory badges based on per-city inventory ──────────────
+  function updateInventoryBadges(cityInventory: Record<string, Record<string, number>>): void {
+    for (let i = 0; i < CITIES.length; i++) {
+      const city = CITIES[i]!
+      const stock = cityInventory[city.id]
+      const hasStock = stock != null && Object.values(stock).some(qty => qty > 0)
+      inventoryBadges[i]!.visible = hasStock
+    }
+  }
+
   // Use getters so callers always read the live values after updatePositions()
   return {
     container,
     get projectedCities() { return projectedCities },
     get cityMap() { return cityMap },
     updatePositions,
+    updateInventoryBadges,
   }
 }

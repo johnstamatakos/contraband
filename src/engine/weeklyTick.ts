@@ -223,6 +223,7 @@ function stepRepairRecurring(state: GameState, gameTimeMs: number): StepResult {
       isFrozen: false,
       departureTimeMs: gameTimeMs,
       frozenDurationMs: 0,
+      smuggleRunId: null,
     }
 
     shipmentsInTransit = [...shipmentsInTransit, newShipment]
@@ -291,7 +292,10 @@ function stepEndTurn(state: GameState, gameTimeMs: number): StepResult {
     state: {
       ...state,
       turn: state.turn + 1,
-      turnsWithoutIllicitActivity: state.turnsWithoutIllicitActivity + 1,
+      // Don't increment inactivity counter if smuggle runs are in transit
+      turnsWithoutIllicitActivity: state.smuggleRuns.some(r => r.status === 'in_transit')
+        ? 0
+        : state.turnsWithoutIllicitActivity + 1,
       contracts: updatedContracts,
       routes: updatedRoutes,
       weatherEvents: updatedWeather,

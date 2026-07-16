@@ -232,17 +232,14 @@ export function drawRoutes(
     const segs = getRouteSegments(route, cityMap, projection, waypoints)
     if (!segs.length) continue
 
-    // Glow applies to the illicit line (offset -2.5) when dual, else center
-    const glowSegs = route.illicitLayerActive ? offsetSegments(segs, -2.5) : segs
-
     if (route.flaggedTurnsRemaining > 0) {
       const pulse = (Math.sin(dashOffset * 0.08) + 1) / 2
       const alpha = 0.35 + pulse * 0.35
-      drawDashedSegments(g, glowSegs, DASH_LEN, GAP_LEN, dashOffset)
+      drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset)
       g.stroke({ color: 0xf97316, width: OPEN_WIDTH + 3, alpha })
     } else if (route.heat > 0) {
       const alpha = (route.heat / 5) * 0.55
-      drawDashedSegments(g, glowSegs, DASH_LEN, GAP_LEN, dashOffset)
+      drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset)
       g.stroke({ color: 0xef4444, width: OPEN_WIDTH + 2.5, alpha })
     }
   }
@@ -254,17 +251,7 @@ export function drawRoutes(
     const segs = getRouteSegments(route, cityMap, projection, waypoints)
     if (!segs.length) continue
 
-    if (route.illicitLayerActive) {
-      // Two parallel lines: legit (gray, +2.5px) and illicit (red, −2.5px)
-      const legitSegs   = offsetSegments(segs,  2.5)
-      const illicitSegs = offsetSegments(segs, -2.5)
-      drawDashedSegments(g, legitSegs,   DASH_LEN, GAP_LEN, dashOffset)
-      g.stroke({ color: MULTI_COLOR, width: OPEN_WIDTH, alpha: 0.7 })
-      drawDashedSegments(g, illicitSegs, DASH_LEN, GAP_LEN, dashOffset)
-      g.stroke({ color: 0xef4444, width: OPEN_WIDTH, alpha: 0.65 })
-    } else {
-      drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset)
-      g.stroke({ color: routeColor(route), width: OPEN_WIDTH, alpha: 0.8 })
-    }
+    drawDashedSegments(g, segs, DASH_LEN, GAP_LEN, dashOffset)
+    g.stroke({ color: routeColor(route), width: OPEN_WIDTH, alpha: 0.8 })
   }
 }

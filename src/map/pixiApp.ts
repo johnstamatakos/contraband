@@ -222,6 +222,7 @@ export async function initPixiApp(
     currentWeatherEvents = state.gameState.weatherEvents
     currentUnlockedSkills = state.gameState.unlockedSkills
     updateStormPositions()
+    cityHandle.updateInventoryBadges(state.gameState.cityInventory)
   })
 
   // ── Resize ────────────────────────────────────────────────────────────────

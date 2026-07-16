@@ -16,7 +16,7 @@ const TIER_LABEL: Record<Route['tier'], string> = {
 // ── Route row ─────────────────────────────────────────────────────────────────
 
 function RouteRow({ route, selectedCityId }: { route: Route; selectedCityId: string }) {
-  const { gameState, establishRoute, activateIllicitLayer } = useGameStore()
+  const { gameState, establishRoute } = useGameStore()
   const { cash } = gameState
   const [, setTick] = useState(0)
 
@@ -32,9 +32,7 @@ function RouteRow({ route, selectedCityId }: { route: Route; selectedCityId: str
   if (!otherCity) return null
 
   const establishCost    = ROUTE_COSTS[route.tier].establish
-  const illicitCost      = ROUTE_COSTS[route.tier].illicit
   const canAffordEstab   = cash >= establishCost
-  const canAffordIllicit = cash >= illicitCost
   const eligibility      = route.status === 'closed' ? canEstablishRoute(route, gameState) : { ok: true }
 
   const statusBadge = {
@@ -77,9 +75,6 @@ function RouteRow({ route, selectedCityId }: { route: Route; selectedCityId: str
                 }`} />
               ))}
             </div>
-            {route.illicitLayerActive && (
-              <span className="text-xs font-mono text-red-400">ILLICIT</span>
-            )}
           </div>
         )}
       </div>
@@ -115,19 +110,6 @@ function RouteRow({ route, selectedCityId }: { route: Route; selectedCityId: str
           }`}
         >
           Establish — ${establishCost.toLocaleString()}
-        </button>
-      )}
-      {route.status === 'open' && !route.illicitLayerActive && (
-        <button
-          onClick={() => activateIllicitLayer(route.id)}
-          disabled={!canAffordIllicit}
-          className={`w-full text-xs font-mono py-1.5 rounded transition-colors ${
-            canAffordIllicit
-              ? 'bg-red-900 hover:bg-red-800 text-red-300 cursor-pointer'
-              : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-          }`}
-        >
-          Activate illicit — ${illicitCost.toLocaleString()}
         </button>
       )}
     </div>

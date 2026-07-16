@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { CITY_MAP } from '../data/cities'
 import { CONFIG } from '../engine/config'
-import { CITY_COMMODITIES } from '../data/commodities'
+import { CITY_COMMODITIES, getAvailablePurchases } from '../data/commodities'
+import { getNetworkCities } from '../engine/gameState'
 import { RoutesModal } from './RoutesModal'
+import { SmugglePlannerModal } from './SmugglePlannerModal'
 
 interface RoutePanelProps {
   cityId: string
@@ -11,8 +13,10 @@ interface RoutePanelProps {
 }
 
 export function RoutePanel({ cityId, onClose }: RoutePanelProps) {
-  const { gameState } = useGameStore()
+  const { gameState, purchaseCommodity } = useGameStore()
   const [routesOpen, setRoutesOpen] = useState(false)
+  const [smugglePlannerOpen, setSmugglePlannerOpen] = useState(false)
+  const [purchaseQtys, setPurchaseQtys] = useState<Record<string, number>>({})
 
   const city = CITY_MAP.get(cityId)
   if (!city) return null
@@ -115,6 +119,124 @@ export function RoutePanel({ cityId, onClose }: RoutePanelProps) {
           </div>
         )}
 
+        {/* Black Market — purchase illicit commodities */}
+        {(() => {
+          const networkCities = getNetworkCities(gameState.routes)
+          const cityReachable = networkCities.has(cityId)
+          const purchases = cityReachable ? getAvailablePurchases(cityId) : []
+          const cityInv = gameState.cityInventory[cityId] ?? {}
+          const hasInventory = Object.values(cityInv).some(qty => qty > 0)
+
+          if (purchases.length === 0 && !hasInventory) return null
+
+          return (
+            <div className="px-4 py-2 space-y-2 border-t border-gray-800">
+              {purchases.length > 0 && (
+                <>
+                  <div className="text-xs font-mono font-semibold text-amber-500 uppercase tracking-wider">
+                    Black Market
+                  </div>
+                  {purchases.map(c => {
+                    const qty = purchaseQtys[c.key] ?? 10
+                    const totalCost = c.buyPrice * qty
+                    const canAfford = gameState.cash >= totalCost
+
+                    return (
+                      <div key={c.key} className="bg-gray-800/60 rounded-lg p-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-mono text-gray-200">
+                            {c.icon} {c.displayName}
+                          </span>
+                          <span className="text-xs font-mono text-gray-500">
+                            ${c.buyPrice}/unit
+                          </span>
+                        </div>
+
+                        {/* Quantity controls */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setPurchaseQtys(p => ({ ...p, [c.key]: Math.max(1, qty - 10) }))}
+                            className="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-mono"
+                          >
+                            −10
+                          </button>
+                          <button
+                            onClick={() => setPurchaseQtys(p => ({ ...p, [c.key]: Math.max(1, qty - 1) }))}
+                            className="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-mono"
+                          >
+                            −
+                          </button>
+                          <span className="text-sm font-mono text-white w-10 text-center">{qty}</span>
+                          <button
+                            onClick={() => setPurchaseQtys(p => ({ ...p, [c.key]: qty + 1 }))}
+                            className="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-mono"
+                          >
+                            +
+                          </button>
+                          <button
+                            onClick={() => setPurchaseQtys(p => ({ ...p, [c.key]: qty + 10 }))}
+                            className="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-mono"
+                          >
+                            +10
+                          </button>
+                          <div className="flex-1" />
+                          <span className="text-xs font-mono text-gray-400">
+                            ${totalCost.toLocaleString()}
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            purchaseCommodity(cityId, c.key, qty)
+                            setPurchaseQtys(p => ({ ...p, [c.key]: 10 }))
+                          }}
+                          disabled={!canAfford}
+                          className={`w-full py-1.5 rounded text-xs font-mono font-semibold tracking-wide transition-colors ${
+                            canAfford
+                              ? 'bg-amber-700 hover:bg-amber-600 text-amber-100 border border-amber-600'
+                              : 'bg-gray-800 text-gray-600 border border-gray-700 cursor-not-allowed'
+                          }`}
+                        >
+                          {canAfford ? `Buy ${qty} units` : 'Not enough cash'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+
+              {/* Inventory at this city */}
+              {hasInventory && (
+                <div className="space-y-1">
+                  <div className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider">
+                    Your Inventory Here
+                  </div>
+                  {Object.entries(cityInv)
+                    .filter(([, qty]) => qty > 0)
+                    .map(([key, qty]) => {
+                      const def = CONFIG.smuggling.commodities[key as keyof typeof CONFIG.smuggling.commodities]
+                      if (!def) return null
+                      return (
+                        <div key={key} className="flex items-center justify-between text-sm font-mono">
+                          <span className="text-gray-300">{def.icon} {def.displayName}</span>
+                          <span className="text-amber-400 font-semibold">{qty} units</span>
+                        </div>
+                      )
+                    })}
+
+                  {/* Smuggle CTA */}
+                  <button
+                    onClick={() => setSmugglePlannerOpen(true)}
+                    className="w-full mt-2 py-2 rounded-lg bg-gradient-to-r from-amber-700 to-orange-700 hover:from-amber-600 hover:to-orange-600 border border-amber-600 text-amber-100 text-sm font-mono font-bold tracking-wide transition-all"
+                  >
+                    Smuggle from here
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
         {/* Threat warnings */}
         {(inspectorHere || interpolHere || interpolAdjacent) && (
           <div className="px-4 py-2 space-y-1 border-t border-gray-800">
@@ -153,6 +275,11 @@ export function RoutePanel({ cityId, onClose }: RoutePanelProps) {
       {/* Routes modal */}
       {routesOpen && (
         <RoutesModal cityId={cityId} onClose={() => setRoutesOpen(false)} />
+      )}
+
+      {/* Smuggle planner modal */}
+      {smugglePlannerOpen && (
+        <SmugglePlannerModal cityId={cityId} onClose={() => setSmugglePlannerOpen(false)} />
       )}
     </>
   )

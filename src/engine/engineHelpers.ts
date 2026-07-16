@@ -40,8 +40,6 @@ export function checkWinLose(state: GameState, gameTimeMs = 0): GameState {
   // game-ending as long as fleet resale value keeps net worth positive.
   if (nw <= 0)                      return { ...state, phase: 'game_over', winState: 'lose_bankrupt' }
   if (state.reputation <= 0)        return { ...state, phase: 'game_over', winState: 'lose_reputation' }
-  if (nw >= CONFIG.winLose.netWorthGoal)
-    return { ...state, phase: 'game_over', winState: 'win_networth' }
   if (state.reputation >= CONFIG.winLose.reputationWinAt)
     return { ...state, phase: 'game_over', winState: 'win_reputation' }
 
