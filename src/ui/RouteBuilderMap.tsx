@@ -1,8 +1,8 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { CITIES, CITY_MAP, getCityName } from '../data/cities'
-import { createProjection, projectCoord } from '../map/projection'
+import { createProjection, projectCoord, zoomViewport, DEFAULT_VIEWPORT } from '../map/projection'
+import type { Viewport } from '../map/projection'
 import { drawWorldToCanvas } from '../map/worldCanvas'
-import { findRouteBetween } from '../engine/pathfinding'
 import type { Route } from '../engine/gameState'
 import type { GeoProjection } from 'd3-geo'
 
@@ -10,17 +10,15 @@ interface RouteBuilderMapProps {
   sourceCity: string
   builtPath: string[]
   openRoutes: Route[]
-  destinationCityIds: Set<string>       // cities that import the selected commodity
+  destinationCityIds: Set<string>
   inspectorCityId: string | null
   interpolCityId: string | null
   interpolAdditionalIds: string[]
   onCityClick: (cityId: string) => void
 }
 
-const HIT_RADIUS = 12
-const MAP_HEIGHT = 220
+const HIT_RADIUS = 14
 
-/** Get all cities directly reachable from a city via open routes. */
 function getReachableFrom(cityId: string, openRoutes: Route[]): Set<string> {
   const reachable = new Set<string>()
   for (const r of openRoutes) {
@@ -43,8 +41,12 @@ export function RouteBuilderMap({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [tooltip, setTooltip] = useState<{ cityId: string; x: number; y: number } | null>(null)
-  const projRef = useRef<GeoProjection | null>(null)
   const cityPositionsRef = useRef<Map<string, [number, number]>>(new Map())
+
+  // Viewport state for zoom/pan
+  const viewportRef = useRef<Viewport>({ ...DEFAULT_VIEWPORT })
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null)
+  const [, setRenderTick] = useState(0) // force re-render after viewport changes
 
   const currentCity = builtPath[builtPath.length - 1] ?? sourceCity
   const reachable = getReachableFrom(currentCity, openRoutes)
@@ -55,7 +57,6 @@ export function RouteBuilderMap({
   if (interpolCityId) allThreatCities.add(interpolCityId)
   for (const id of interpolAdditionalIds) allThreatCities.add(id)
 
-  // Cities that have open routes (are part of the network)
   const networkCities = new Set<string>()
   for (const r of openRoutes) {
     networkCities.add(r.origin)
@@ -68,17 +69,17 @@ export function RouteBuilderMap({
     if (!canvas || !container) return
 
     const width = container.clientWidth
-    const height = MAP_HEIGHT
+    const height = container.clientHeight
+    if (width <= 0 || height <= 0) return
+
     const dpr = window.devicePixelRatio || 1
     canvas.width = Math.round(width * dpr)
     canvas.height = Math.round(height * dpr)
     canvas.style.width = `${width}px`
     canvas.style.height = `${height}px`
 
-    const projection = createProjection(width, height, { zoom: 1, panX: 0, panY: 0 })
-    projRef.current = projection
+    const projection = createProjection(width, height, viewportRef.current)
 
-    // Draw world background
     drawWorldToCanvas(canvas, projection)
 
     const ctx = canvas.getContext('2d')
@@ -94,10 +95,12 @@ export function RouteBuilderMap({
     }
     cityPositionsRef.current = positions
 
+    const zoom = viewportRef.current.zoom
+
     // Draw open routes as thin gray lines
     ctx.strokeStyle = '#374151'
-    ctx.lineWidth = 0.8
-    ctx.setLineDash([3, 3])
+    ctx.lineWidth = Math.max(0.8, 1 * zoom)
+    ctx.setLineDash([4, 3])
     for (const route of openRoutes) {
       const from = positions.get(route.origin)
       const to = positions.get(route.destination)
@@ -112,9 +115,9 @@ export function RouteBuilderMap({
     // Draw built path as solid amber line
     if (builtPath.length > 1) {
       ctx.strokeStyle = '#f59e0b'
-      ctx.lineWidth = 2.5
+      ctx.lineWidth = Math.max(2.5, 3 * zoom)
       ctx.shadowColor = '#f59e0b'
-      ctx.shadowBlur = 6
+      ctx.shadowBlur = 8
       ctx.beginPath()
       for (let i = 0; i < builtPath.length; i++) {
         const pos = positions.get(builtPath[i]!)
@@ -126,10 +129,16 @@ export function RouteBuilderMap({
       ctx.shadowBlur = 0
     }
 
+    // Scale city dot sizes with zoom
+    const baseR = Math.max(3, 4 * Math.min(zoom, 3))
+    const fontSize = Math.max(8, Math.round(10 * Math.min(zoom, 2.5)))
+
     // Draw city dots
     for (const city of CITIES) {
       const pos = positions.get(city.id)
       if (!pos) continue
+      // Skip cities far off-screen
+      if (pos[0] < -50 || pos[0] > width + 50 || pos[1] < -50 || pos[1] > height + 50) continue
 
       const isInPath = pathSet.has(city.id)
       const isReachable = reachable.has(city.id) && !isInPath
@@ -139,22 +148,22 @@ export function RouteBuilderMap({
       const isCurrent = city.id === currentCity
       const isInNetwork = networkCities.has(city.id)
 
-      const r = isSource || isCurrent ? 5 : isInPath ? 4.5 : isReachable ? 4 : 3
+      const r = isSource || isCurrent ? baseR + 2 : isInPath ? baseR + 1 : isReachable ? baseR : baseR - 1
 
       // Threat glow
       if (isThreat && isInNetwork) {
         ctx.beginPath()
-        ctx.arc(pos[0], pos[1], r + 5, 0, Math.PI * 2)
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.25)'
+        ctx.arc(pos[0], pos[1], r + 6, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.3)'
         ctx.fill()
       }
 
       // Destination ring
       if (isDestination && isInNetwork && !isInPath) {
         ctx.beginPath()
-        ctx.arc(pos[0], pos[1], r + 3, 0, Math.PI * 2)
+        ctx.arc(pos[0], pos[1], r + 4, 0, Math.PI * 2)
         ctx.strokeStyle = '#f59e0b'
-        ctx.lineWidth = 1.5
+        ctx.lineWidth = 2
         ctx.stroke()
       }
 
@@ -162,15 +171,15 @@ export function RouteBuilderMap({
       ctx.beginPath()
       ctx.arc(pos[0], pos[1], r, 0, Math.PI * 2)
       if (isSource || isCurrent) {
-        ctx.fillStyle = '#f59e0b' // amber
+        ctx.fillStyle = '#f59e0b'
       } else if (isInPath) {
-        ctx.fillStyle = '#10b981' // green
+        ctx.fillStyle = '#10b981'
       } else if (isReachable) {
-        ctx.fillStyle = '#e5e7eb' // white-ish
+        ctx.fillStyle = '#e5e7eb'
       } else if (isInNetwork) {
-        ctx.fillStyle = '#6b7280' // gray
+        ctx.fillStyle = '#6b7280'
       } else {
-        ctx.fillStyle = '#374151' // dark gray
+        ctx.fillStyle = '#374151'
       }
       ctx.fill()
 
@@ -182,33 +191,18 @@ export function RouteBuilderMap({
         ctx.fill()
       }
 
-      // City label (only for network cities)
+      // City label
       if (isInNetwork) {
-        ctx.font = `${isInPath || isReachable ? 9 : 8}px monospace`
+        ctx.font = `${isInPath || isReachable ? fontSize : fontSize - 1}px monospace`
         ctx.fillStyle = isInPath ? '#10b981' : isReachable ? '#d1d5db' : '#6b7280'
-        ctx.fillText(city.name, pos[0] + r + 3, pos[1] + 3)
-      }
-    }
-
-    // Draw per-hop risk labels on the built path
-    if (builtPath.length > 1) {
-      ctx.font = 'bold 9px monospace'
-      for (let i = 1; i < builtPath.length; i++) {
-        const from = positions.get(builtPath[i - 1]!)
-        const to = positions.get(builtPath[i]!)
-        if (!from || !to) continue
-        const mx = (from[0] + to[0]) / 2
-        const my = (from[1] + to[1]) / 2 - 6
-        // Risk label will be drawn by parent via overlay — skip here to avoid Canvas text limitations
+        ctx.fillText(city.name, pos[0] + r + 4, pos[1] + 4)
       }
     }
 
     ctx.restore()
   }, [builtPath, openRoutes, destinationCityIds, sourceCity, currentCity, reachable, pathSet, allThreatCities, networkCities])
 
-  useEffect(() => {
-    draw()
-  }, [draw])
+  useEffect(() => { draw() }, [draw])
 
   // Resize observer
   useEffect(() => {
@@ -219,14 +213,82 @@ export function RouteBuilderMap({
     return () => ro.disconnect()
   }, [draw])
 
+  // Zoom (mouse wheel)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const rect = container.getBoundingClientRect()
+      const sx = e.clientX - rect.left
+      const sy = e.clientY - rect.top
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
+      viewportRef.current = zoomViewport(viewportRef.current, factor, sx, sy, container.clientWidth, container.clientHeight)
+      draw()
+      setRenderTick(t => t + 1)
+    }
+
+    canvas.addEventListener('wheel', onWheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', onWheel)
+  }, [draw])
+
+  // Pan (mouse drag)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return
+      dragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        panX: viewportRef.current.panX,
+        panY: viewportRef.current.panY,
+      }
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current) return
+      const dx = e.clientX - dragRef.current.startX
+      const dy = e.clientY - dragRef.current.startY
+      if (Math.abs(dx) < 3 && Math.abs(dy) < 3) return
+      viewportRef.current = {
+        ...viewportRef.current,
+        panX: dragRef.current.panX + dx,
+        panY: dragRef.current.panY + dy,
+      }
+      draw()
+      setRenderTick(t => t + 1)
+      canvas.style.cursor = 'grabbing'
+    }
+
+    const onMouseUp = () => {
+      dragRef.current = null
+      canvas.style.cursor = ''
+    }
+
+    canvas.addEventListener('mousedown', onMouseDown)
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      canvas.removeEventListener('mousedown', onMouseDown)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [draw])
+
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Don't register click if we were dragging
+    if (dragRef.current) return
     const canvas = canvasRef.current
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
 
-    // Find nearest city within hit radius
     let nearest: string | null = null
     let nearestDist = Infinity
     for (const [cityId, pos] of cityPositionsRef.current) {
@@ -245,6 +307,7 @@ export function RouteBuilderMap({
   }, [reachable, pathSet, onCityClick])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (dragRef.current) { setTooltip(null); return }
     const canvas = canvasRef.current
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
@@ -265,25 +328,64 @@ export function RouteBuilderMap({
     }
 
     if (nearest) {
-      setTooltip({ cityId: nearest, x: e.clientX - (containerRef.current?.getBoundingClientRect().left ?? 0), y: e.clientY - (containerRef.current?.getBoundingClientRect().top ?? 0) })
+      setTooltip({
+        cityId: nearest,
+        x: e.clientX - (containerRef.current?.getBoundingClientRect().left ?? 0),
+        y: e.clientY - (containerRef.current?.getBoundingClientRect().top ?? 0),
+      })
     } else {
       setTooltip(null)
     }
 
-    // Cursor
     const isClickable = nearest && reachable.has(nearest) && !pathSet.has(nearest)
     canvas.style.cursor = isClickable ? 'pointer' : 'default'
   }, [networkCities, reachable, pathSet])
 
+  const handleReset = useCallback(() => {
+    viewportRef.current = { ...DEFAULT_VIEWPORT }
+    draw()
+    setRenderTick(t => t + 1)
+  }, [draw])
+
   return (
-    <div ref={containerRef} className="relative w-full rounded-lg overflow-hidden border border-gray-700">
+    <div ref={containerRef} className="relative w-full rounded-lg overflow-hidden border border-gray-700" style={{ height: '100%', minHeight: 300 }}>
       <canvas
         ref={canvasRef}
-        style={{ display: 'block', width: '100%', height: `${MAP_HEIGHT}px` }}
+        style={{ display: 'block', width: '100%', height: '100%' }}
         onClick={handleClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setTooltip(null)}
       />
+
+      {/* Zoom controls */}
+      <div className="absolute top-2 right-2 flex gap-1 z-10">
+        <button
+          onClick={() => {
+            const c = containerRef.current
+            if (!c) return
+            viewportRef.current = zoomViewport(viewportRef.current, 1.3, c.clientWidth / 2, c.clientHeight / 2, c.clientWidth, c.clientHeight)
+            draw(); setRenderTick(t => t + 1)
+          }}
+          className="w-6 h-6 flex items-center justify-center rounded text-xs font-mono border bg-gray-950/80 border-gray-700 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+        >+</button>
+        <button
+          onClick={() => {
+            const c = containerRef.current
+            if (!c) return
+            viewportRef.current = zoomViewport(viewportRef.current, 1 / 1.3, c.clientWidth / 2, c.clientHeight / 2, c.clientWidth, c.clientHeight)
+            draw(); setRenderTick(t => t + 1)
+          }}
+          className="w-6 h-6 flex items-center justify-center rounded text-xs font-mono border bg-gray-950/80 border-gray-700 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+        >−</button>
+        <button onClick={handleReset}
+          className="w-6 h-6 flex items-center justify-center rounded text-xs font-mono border bg-gray-950/80 border-gray-700 text-gray-500 hover:text-gray-300 transition-colors"
+        >⊕</button>
+      </div>
+
+      {/* Hint */}
+      <div className="absolute bottom-1.5 right-2 text-xs font-mono text-gray-600 pointer-events-none z-10">
+        scroll to zoom · drag to pan · click city to add
+      </div>
 
       {/* Hover tooltip */}
       {tooltip && (() => {
@@ -295,7 +397,7 @@ export function RouteBuilderMap({
         return (
           <div
             className="absolute bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs font-mono shadow-xl pointer-events-none z-10"
-            style={{ left: Math.min(tooltip.x + 10, (containerRef.current?.clientWidth ?? 300) - 120), top: tooltip.y - 30 }}
+            style={{ left: Math.min(tooltip.x + 10, (containerRef.current?.clientWidth ?? 300) - 140), top: tooltip.y - 30 }}
           >
             <span className="text-white font-semibold">{city.name}</span>
             {isThreat && <span className="text-red-400 ml-1.5">THREAT</span>}
