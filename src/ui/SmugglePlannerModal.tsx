@@ -437,18 +437,9 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
               <div className="bg-gray-800/60 rounded-lg p-3 space-y-1.5">
                 <div className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider">Payout</div>
                 <div className="flex justify-between text-xs font-mono">
-                  <span className="text-gray-400">Sale revenue</span>
-                  <span className="text-emerald-400">${(effectiveVolume * sellPrice).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-xs font-mono">
-                  <span className="text-gray-400">Purchase cost</span>
-                  <span className="text-gray-600 line-through">−${(effectiveVolume * buyPrice).toLocaleString()}</span>
-                </div>
-                <div className="text-xs font-mono text-gray-600 italic">Already deducted at purchase</div>
-                <div className="border-t border-gray-700 pt-1 flex justify-between text-xs font-mono">
-                  <span className="text-gray-300">Net profit</span>
+                  <span className="text-gray-300">Revenue on delivery</span>
                   <span className="text-emerald-400 font-semibold">
-                    +${((effectiveVolume * sellPrice) - (effectiveVolume * buyPrice)).toLocaleString()}
+                    +${(effectiveVolume * sellPrice).toLocaleString()}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs font-mono">
