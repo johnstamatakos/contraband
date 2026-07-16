@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useGameStore, type SmuggleRunConfig } from '../store/gameStore'
 import { CONFIG } from '../engine/config'
 import { getCityName } from '../data/cities'
@@ -26,6 +27,58 @@ function computeRepReward(hops: { routeTier: string }[], volume: number): number
   const hopMult = Math.min(rr.hopMultiplierCap, 1.0 + (hops.length - 1) * rr.hopMultiplierStep)
   const volMult = 1.0 + Math.min(rr.volumeMultiplierCap, Math.floor(volume / rr.volumeStepSize) * rr.volumeMultiplierStep)
   return Math.floor(maxTierRep * hopMult * volMult)
+}
+
+function HopRiskRow({ label, prob, breakdown }: {
+  label: string
+  prob: number
+  breakdown: ReturnType<typeof smuggleHopDetection>['breakdown']
+}) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+
+  const factors = [
+    { label: 'Base', value: breakdown.base, positive: true },
+    { label: 'Route heat', value: breakdown.routeHeat, positive: true },
+    { label: 'Global heat', value: breakdown.globalHeat, positive: true },
+    { label: 'Consecutive', value: breakdown.consecutiveRuns, positive: true },
+    { label: 'Threat', value: breakdown.threatBonus, positive: true },
+    { label: 'Vehicles', value: breakdown.vehiclePenalty, positive: true },
+    { label: 'Volume', value: breakdown.volumePenalty, positive: true },
+    { label: 'Skills', value: breakdown.skillsReduction, positive: false },
+    { label: 'Concealment', value: breakdown.concealmentReduction, positive: false },
+    { label: 'Legit cover', value: breakdown.legitCover, positive: false },
+  ].filter(f => f.value > 0.001)
+
+  return (
+    <div
+      className="flex justify-between text-xs font-mono cursor-help"
+      onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })}
+      onMouseLeave={() => setPos(null)}
+    >
+      <span className="text-gray-400 truncate">{label}</span>
+      <span className="text-red-400">{Math.round(prob * 100)}%</span>
+      {pos && createPortal(
+        <div
+          className="fixed bg-gray-950 border border-gray-700 rounded p-2 text-xs font-mono min-w-[10rem] shadow-xl pointer-events-none"
+          style={{ left: pos.x + 12, top: pos.y - 80, zIndex: 9999 }}
+        >
+          {factors.map(f => (
+            <div key={f.label} className="flex justify-between gap-3">
+              <span className="text-gray-500">{f.label}</span>
+              <span className={f.positive ? 'text-red-400' : 'text-green-400'}>
+                {f.positive ? '+' : '−'}{Math.round(f.value * 100)}%
+              </span>
+            </div>
+          ))}
+          <div className="flex justify-between gap-3 border-t border-gray-700 mt-1 pt-1">
+            <span className="text-gray-300">Detection</span>
+            <span className="text-red-400">{Math.round(breakdown.final * 100)}%</span>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  )
 }
 
 export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProps) {
@@ -174,7 +227,12 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
+    <div
+      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+      onClick={onClose}
+      onWheel={e => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation() }}
+      onPointerDown={e => e.stopPropagation()}
+    >
       <div
         className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-[540px] max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
@@ -270,7 +328,7 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
                       </span>
                       {hop && (
                         <span className={`text-xs font-mono ${
-                          hop.prob >= 0.3 ? 'text-red-400' : hop.prob >= 0.15 ? 'text-orange-400' : 'text-gray-500'
+                          'text-red-400'
                         }`}>
                           {Math.round(hop.prob * 100)}%
                         </span>
@@ -358,21 +416,17 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
               <div className="bg-gray-800/60 rounded-lg p-3 space-y-1.5">
                 <div className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider">Risk</div>
                 {hopData.map((h, i) => (
-                  <div key={i} className="flex justify-between text-xs font-mono">
-                    <span className="text-gray-400 truncate">
-                      {getCityName(h.origin)} → {getCityName(h.destination)}
-                    </span>
-                    <span className={
-                      h.prob >= 0.3 ? 'text-red-400' : h.prob >= 0.15 ? 'text-orange-400' : 'text-green-400'
-                    }>
-                      {Math.round(h.prob * 100)}%
-                    </span>
-                  </div>
+                  <HopRiskRow
+                    key={i}
+                    label={`${getCityName(h.origin)} → ${getCityName(h.destination)}`}
+                    prob={h.prob}
+                    breakdown={h.breakdown}
+                  />
                 ))}
                 <div className="border-t border-gray-700 pt-1 flex justify-between text-xs font-mono">
                   <span className="text-gray-300">Success chance</span>
                   <span className={
-                    survivalProb >= 0.7 ? 'text-green-400' : survivalProb >= 0.5 ? 'text-yellow-400' : 'text-red-400'
+                    'text-green-400'
                   }>
                     {Math.round(survivalProb * 100)}%
                   </span>
@@ -383,17 +437,18 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
               <div className="bg-gray-800/60 rounded-lg p-3 space-y-1.5">
                 <div className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider">Payout</div>
                 <div className="flex justify-between text-xs font-mono">
-                  <span className="text-gray-400">Revenue</span>
+                  <span className="text-gray-400">Sale revenue</span>
                   <span className="text-emerald-400">${(effectiveVolume * sellPrice).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-xs font-mono">
-                  <span className="text-gray-400">Cost (paid)</span>
-                  <span className="text-gray-500">${(effectiveVolume * buyPrice).toLocaleString()}</span>
+                  <span className="text-gray-400">Purchase cost</span>
+                  <span className="text-gray-600 line-through">−${(effectiveVolume * buyPrice).toLocaleString()}</span>
                 </div>
+                <div className="text-xs font-mono text-gray-600 italic">Already deducted at purchase</div>
                 <div className="border-t border-gray-700 pt-1 flex justify-between text-xs font-mono">
-                  <span className="text-gray-300">Profit</span>
+                  <span className="text-gray-300">Net profit</span>
                   <span className="text-emerald-400 font-semibold">
-                    ${((effectiveVolume * sellPrice) - (effectiveVolume * buyPrice)).toLocaleString()}
+                    +${((effectiveVolume * sellPrice) - (effectiveVolume * buyPrice)).toLocaleString()}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs font-mono">

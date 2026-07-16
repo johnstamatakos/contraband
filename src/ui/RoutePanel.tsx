@@ -193,7 +193,7 @@ export function RoutePanel({ cityId, onClose }: RoutePanelProps) {
                           disabled={!canAfford}
                           className={`w-full py-1.5 rounded text-xs font-mono font-semibold tracking-wide transition-colors ${
                             canAfford
-                              ? 'bg-amber-700 hover:bg-amber-600 text-amber-100 border border-amber-600'
+                              ? 'bg-emerald-700 hover:bg-emerald-600 text-emerald-100 border border-emerald-600'
                               : 'bg-gray-800 text-gray-600 border border-gray-700 cursor-not-allowed'
                           }`}
                         >

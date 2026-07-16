@@ -76,8 +76,8 @@ export function StartScreen() {
           <div className="space-y-2 font-mono text-sm text-gray-400 leading-relaxed">
             <p>
               You run a global cargo network — legitimate freight on the surface, contraband
-              underneath. Establish routes, assign vehicles, and stay ahead of investigators
-              long enough to build a $2M empire.
+              underneath. Expand your network, purchase illicit commodities, and smuggle them
+              across multi-hop routes for profit and reputation.
             </p>
             <p>
               The clock runs in real time. <span className="text-gray-300">1 week = 2 minutes.</span> Pause anytime to plan your next move.
@@ -90,32 +90,32 @@ export function StartScreen() {
             <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
               <div className="text-amber-400 font-bold uppercase tracking-widest">Routes</div>
               <div className="text-gray-400 leading-relaxed">
-                Click a city to open a connection. Then <span className="text-gray-300">activate the illicit route</span> to unlock
-                black-market contracts on it.
+                Click a city to manage routes. <span className="text-gray-300">Establish connections</span> to expand your
+                network and reach new commodity sources.
               </div>
             </div>
 
             <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
-              <div className="text-blue-400 font-bold uppercase tracking-widest">Contracts</div>
+              <div className="text-blue-400 font-bold uppercase tracking-widest">Supply Runs</div>
               <div className="text-gray-400 leading-relaxed">
-                <span className="text-gray-300">Legit runs loop automatically</span> — assign once, collect indefinitely.
-                Illicit runs are one-shot: higher payout and +rep, but risk a bust.
+                <span className="text-gray-300">Legit contracts loop automatically</span> — assign a vehicle once, collect
+                steady income to fund your real operation.
               </div>
             </div>
 
             <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
-              <div className="text-red-400 font-bold uppercase tracking-widest">Threats</div>
+              <div className="text-amber-500 font-bold uppercase tracking-widest">Smuggling</div>
               <div className="text-gray-400 leading-relaxed">
-                Route heat rises with every illicit run. <span className="text-gray-300">Inspector</span> targets domestic routes from
-                week 10. <span className="text-gray-300">Interpol</span> hunts international from week 20.
+                Buy commodities from <span className="text-gray-300">Black Market</span> in source cities. Plan multi-hop
+                routes and deliver for <span className="text-gray-300">profit + reputation</span>.
               </div>
             </div>
 
             <div className="bg-gray-900 border border-gray-800 rounded p-3 space-y-1.5">
               <div className="text-emerald-400 font-bold uppercase tracking-widest">Win / Lose</div>
               <div className="text-gray-400 leading-relaxed">
-                Reach <span className="text-gray-300">$2M net worth</span> or <span className="text-gray-300">100 reputation</span>.
-                Lose if net worth hits zero or reputation is destroyed.
+                Reach <span className="text-gray-300">100 reputation</span> to win.
+                Lose if you go bankrupt or your reputation is destroyed.
               </div>
             </div>
 

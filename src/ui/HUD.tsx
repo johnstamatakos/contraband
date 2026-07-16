@@ -48,7 +48,7 @@ function InventoryStrip({
   return (
     <div className="flex items-center gap-2 shrink-0">
       <div className="w-px h-10 bg-gray-700" />
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4">
         {commodities.map(([key, total]) => {
           const def = CONFIG.smuggling.commodities[key as keyof typeof CONFIG.smuggling.commodities]
           if (!def) return null
@@ -57,7 +57,7 @@ function InventoryStrip({
           return (
             <div
               key={key}
-              className="relative flex items-center gap-1 cursor-default"
+              className="relative flex items-center gap-1.5 cursor-default"
               onMouseEnter={e => {
                 setHoveredKey(key)
                 setTooltipPos({ x: e.clientX, y: e.clientY })
@@ -68,8 +68,8 @@ function InventoryStrip({
                 setTooltipPos(null)
               }}
             >
-              <span className="text-base">{def.icon}</span>
-              <span className="text-xs font-mono font-semibold text-amber-400">{total}</span>
+              <span className="text-lg leading-none">{def.icon}</span>
+              <span className="text-sm font-mono font-semibold text-amber-400">{total}</span>
 
               {/* Tooltip: per-city breakdown */}
               {hoveredKey === key && tooltipPos && (
