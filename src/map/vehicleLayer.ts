@@ -274,6 +274,7 @@ export function drawVehicles(
 
     const pos = interpolateAlongSegments(segs, progress)
     if (!pos) continue
+    if (shipment.reversed) pos.angle += Math.PI
 
     const baseColor: number    = vehicle ? VEHICLE_COLOR[vehicle.type] : 0xffffff
     const vehicleType: VehicleType = vehicle?.type ?? 'truck'
