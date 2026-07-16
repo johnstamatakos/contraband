@@ -21,6 +21,14 @@ interface RouteBuilderMapProps {
 
 const HIT_RADIUS = 14
 
+// Routes that cross the antimeridian — draw as two segments going off opposite edges
+const ANTIMERIDIAN_ROUTES = new Set([
+  'route_los_angeles_tokyo',
+  'route_tokyo_los_angeles',
+  'route_los_angeles_singapore',
+  'route_singapore_los_angeles',
+])
+
 /** Draw a line from city A to city B, routing through visual waypoints if defined. */
 function drawRouteLine(
   ctx: CanvasRenderingContext2D,
@@ -28,7 +36,31 @@ function drawRouteLine(
   toPos: [number, number],
   routeId: string,
   projection: GeoProjection,
+  canvasWidth: number,
+  canvasHeight: number,
 ) {
+  // For antimeridian routes, draw two segments exiting off opposite edges
+  if (ANTIMERIDIAN_ROUTES.has(routeId)) {
+    // Left segment: from city on the left side, going further left off-screen
+    // Right segment: from city on the right side, going further right off-screen
+    const [leftPos, rightPos] = fromPos[0] < toPos[0] ? [fromPos, toPos] : [toPos, fromPos]
+
+    // Left city goes off the left edge
+    const leftEdgeY = leftPos[1] + (leftPos[1] - rightPos[1]) * 0.15
+    ctx.beginPath()
+    ctx.moveTo(leftPos[0], leftPos[1])
+    ctx.lineTo(-10, leftEdgeY)
+    ctx.stroke()
+
+    // Right city goes off the right edge
+    const rightEdgeY = rightPos[1] + (rightPos[1] - leftPos[1]) * 0.15
+    ctx.beginPath()
+    ctx.moveTo(rightPos[0], rightPos[1])
+    ctx.lineTo(canvasWidth + 10, rightEdgeY)
+    ctx.stroke()
+    return
+  }
+
   const waypoints = ROUTE_VISUAL_WAYPOINTS[routeId]
   ctx.beginPath()
   ctx.moveTo(fromPos[0], fromPos[1])
@@ -129,7 +161,7 @@ export function RouteBuilderMap({
       const from = positions.get(route.origin)
       const to = positions.get(route.destination)
       if (!from || !to) continue
-      drawRouteLine(ctx, from, to, route.id, projection)
+      drawRouteLine(ctx, from, to, route.id, projection, width, height)
     }
     ctx.setLineDash([])
 
@@ -146,7 +178,7 @@ export function RouteBuilderMap({
         const routeId = `route_${builtPath[i]}_${builtPath[i + 1]}`
         const reverseId = `route_${builtPath[i + 1]}_${builtPath[i]}`
         const id = ROUTE_VISUAL_WAYPOINTS[routeId] ? routeId : reverseId
-        drawRouteLine(ctx, from, to, id, projection)
+        drawRouteLine(ctx, from, to, id, projection, width, height)
       }
       ctx.shadowBlur = 0
     }
