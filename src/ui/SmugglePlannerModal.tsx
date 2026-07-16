@@ -259,7 +259,7 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
       onPointerDown={e => e.stopPropagation()}
     >
       <div
-        className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-[90vw] max-w-[1100px] h-[88vh] flex flex-col"
+        className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-[94vw] max-w-[1400px] h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -271,157 +271,161 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
           <button onClick={onClose} className="text-gray-600 hover:text-gray-400 text-lg font-mono">✕</button>
         </div>
 
-        {/* Two-column layout: map (left) + controls (right) */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left: Route builder map */}
-          <div className="flex-1 flex flex-col min-w-0">
-            {/* Commodity bar + route controls */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 shrink-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                {commodityOptions.map(c => (
-                  <button
-                    key={c.key}
-                    onClick={() => { setSelectedCommodity(c.key); setBuiltPath([cityId]); setSelectedVehicleIds([]); setVolume(0) }}
-                    className={`px-2.5 py-1 rounded text-xs font-mono border transition-colors ${
-                      selectedCommodity === c.key
-                        ? 'bg-amber-900/60 border-amber-600 text-amber-300'
-                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
-                    }`}
-                  >
-                    {c.icon} {c.displayName} ({c.qty})
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0 ml-3">
-                <span className="text-xs font-mono text-gray-500">
-                  {builtPath.length > 1 ? `${builtPath.length - 1} hop${builtPath.length - 1 > 1 ? 's' : ''}` : 'Click a city'}
+        {/* Commodity bar + route controls */}
+        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {commodityOptions.map(c => (
+              <button
+                key={c.key}
+                onClick={() => { setSelectedCommodity(c.key); setBuiltPath([cityId]); setSelectedVehicleIds([]); setVolume(0) }}
+                className={`px-2.5 py-1 rounded text-xs font-mono border transition-colors ${
+                  selectedCommodity === c.key
+                    ? 'bg-amber-900/60 border-amber-600 text-amber-300'
+                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                }`}
+              >
+                {c.icon} {c.displayName} ({c.qty})
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0 ml-3">
+            <span className="text-xs font-mono text-gray-500">
+              {builtPath.length > 1 ? `${builtPath.length - 1} hop${builtPath.length - 1 > 1 ? 's' : ''}` : 'Click a city'}
+            </span>
+            <button onClick={handleAuto}
+              className="text-xs font-mono px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors">Auto</button>
+            <button onClick={handleUndo} disabled={builtPath.length <= 1}
+              className="text-xs font-mono px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">Undo</button>
+            <button onClick={handleClear} disabled={builtPath.length <= 1}
+              className="text-xs font-mono px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">Clear</button>
+          </div>
+        </div>
+
+        {/* Full-width map */}
+        {selectedCommodity && (
+          <div className="flex-1 relative min-h-0">
+            <RouteBuilderMap
+              sourceCity={cityId}
+              builtPath={builtPath}
+              openRoutes={openRoutes}
+              destinationCityIds={destinationCityIds}
+              inspectorCityId={gameState.inspector.currentCityId}
+              interpolCityId={gameState.interpol.currentCityId}
+              interpolAdditionalIds={gameState.interpol.additionalCityIds}
+              onCityClick={handleCityClick}
+              onBacktrack={handleBacktrack}
+            />
+          </div>
+        )}
+
+        {/* Route summary bar */}
+        {builtPath.length > 1 && (
+          <div className="flex items-center gap-1 flex-wrap px-4 py-1.5 border-t border-gray-800 text-xs font-mono shrink-0">
+            {builtPath.map((city, i) => {
+              const hop = i > 0 ? hopData[i - 1] : null
+              const threatAtCity = city === gameState.inspector.currentCityId ||
+                city === gameState.interpol.currentCityId ||
+                gameState.interpol.additionalCityIds.includes(city)
+              return (
+                <span key={i} className="flex items-center gap-1">
+                  {i > 0 && <span className="text-gray-600">→</span>}
+                  <span className={`px-1 py-0.5 rounded ${
+                    threatAtCity ? 'bg-red-950/60 text-red-400 border border-red-900/40'
+                      : i === builtPath.length - 1 && isRouteComplete ? 'bg-amber-950/60 text-amber-400'
+                      : 'text-gray-300'
+                  }`}>{getCityName(city)}</span>
+                  {hop && <span className="text-red-400">{Math.round(hop.prob * 100)}%</span>}
                 </span>
-                <button onClick={handleAuto}
-                  className="text-xs font-mono px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors">Auto</button>
-                <button onClick={handleUndo} disabled={builtPath.length <= 1}
-                  className="text-xs font-mono px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">Undo</button>
-                <button onClick={handleClear} disabled={builtPath.length <= 1}
-                  className="text-xs font-mono px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">Clear</button>
-              </div>
-            </div>
+              )
+            })}
+            {isRouteComplete && <span className="text-emerald-500 ml-1">${sellPrice}/u</span>}
+          </div>
+        )}
 
-            {/* Map */}
-            {selectedCommodity && (
-              <div className="flex-1 relative">
-                <RouteBuilderMap
-                  sourceCity={cityId}
-                  builtPath={builtPath}
-                  openRoutes={openRoutes}
-                  destinationCityIds={destinationCityIds}
-                  inspectorCityId={gameState.inspector.currentCityId}
-                  interpolCityId={gameState.interpol.currentCityId}
-                  interpolAdditionalIds={gameState.interpol.additionalCityIds}
-                  onCityClick={handleCityClick}
-                onBacktrack={handleBacktrack}
-                />
-              </div>
-            )}
-
-            {/* Route summary bar */}
-            {builtPath.length > 1 && (
-              <div className="flex items-center gap-1 flex-wrap px-4 py-2 border-t border-gray-800 text-xs font-mono shrink-0">
-                {builtPath.map((city, i) => {
-                  const hop = i > 0 ? hopData[i - 1] : null
-                  const threatAtCity = city === gameState.inspector.currentCityId ||
-                    city === gameState.interpol.currentCityId ||
-                    gameState.interpol.additionalCityIds.includes(city)
+        {/* Bottom panel: vehicles, volume, risk, payout — evenly spaced */}
+        <div className="grid grid-cols-4 gap-3 px-4 py-3 border-t border-gray-800 shrink-0">
+          {/* Vehicles */}
+          <div className="min-w-0">
+            <label className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider block mb-1">
+              Vehicles {selectedVehicleIds.length > 0 ? `(${selectedVehicleIds.length})` : ''}
+            </label>
+            {!isRouteComplete ? (
+              <div className="text-xs font-mono text-gray-600 italic">Build route first</div>
+            ) : eligibleVehicles.length === 0 ? (
+              <div className="text-xs font-mono text-gray-600 italic">No eligible vehicles</div>
+            ) : (
+              <div className="space-y-1 max-h-28 overflow-y-auto">
+                {eligibleVehicles.map(v => {
+                  const selected = selectedVehicleIds.includes(v.id)
                   return (
-                    <span key={i} className="flex items-center gap-1">
-                      {i > 0 && <span className="text-gray-600">→</span>}
-                      <span className={`px-1 py-0.5 rounded ${
-                        threatAtCity ? 'bg-red-950/60 text-red-400 border border-red-900/40'
-                          : i === builtPath.length - 1 && isRouteComplete ? 'bg-amber-950/60 text-amber-400'
-                          : 'text-gray-300'
-                      }`}>{getCityName(city)}</span>
-                      {hop && <span className="text-red-400">{Math.round(hop.prob * 100)}%</span>}
-                    </span>
+                    <button key={v.id}
+                      onClick={() => {
+                        if (selected) setSelectedVehicleIds(ids => ids.filter(id => id !== v.id))
+                        else setSelectedVehicleIds(ids => [...ids, v.id])
+                        setVolume(0)
+                      }}
+                      className={`w-full px-2 py-1 rounded text-xs font-mono border text-left transition-colors ${
+                        selected ? 'bg-blue-900/40 border-blue-700 text-blue-300'
+                          : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                      }`}>
+                      <span className="font-semibold">{VEHICLE_ICON[v.type]} {v.name}</span>
+                      <span className="text-gray-500 ml-1">Cap:{v.capacity} Hide:T{v.upgrades.concealment}</span>
+                    </button>
                   )
                 })}
-                {isRouteComplete && <span className="text-emerald-500 ml-1">${sellPrice}/u</span>}
               </div>
             )}
           </div>
 
-          {/* Right: Controls sidebar */}
-          <div className="w-[280px] shrink-0 border-l border-gray-800 overflow-y-auto p-3 space-y-3">
-            {/* Vehicle selection */}
-            {isRouteComplete ? (
-              <div>
-                <label className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider block mb-1">
-                  Vehicles ({selectedVehicleIds.length})
-                </label>
-                {eligibleVehicles.length === 0 ? (
-                  <div className="text-xs font-mono text-gray-600 italic">No eligible vehicles.</div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {eligibleVehicles.map(v => {
-                      const selected = selectedVehicleIds.includes(v.id)
-                      return (
-                        <button key={v.id}
-                          onClick={() => {
-                            if (selected) setSelectedVehicleIds(ids => ids.filter(id => id !== v.id))
-                            else setSelectedVehicleIds(ids => [...ids, v.id])
-                            setVolume(0)
-                          }}
-                          className={`w-full px-2 py-1.5 rounded text-xs font-mono border text-left transition-colors ${
-                            selected ? 'bg-blue-900/40 border-blue-700 text-blue-300'
-                              : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
-                          }`}>
-                          <div className="font-semibold">{VEHICLE_ICON[v.type]} {v.name}</div>
-                          <div className="text-gray-500">Cap: {v.capacity} | Hide: T{v.upgrades.concealment}</div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-xs font-mono text-gray-600 italic py-4 text-center">
-                Build a route on the map to a destination city (amber ring)
-              </div>
-            )}
-
-            {/* Volume */}
-            {selectedVehicleIds.length > 0 && maxVolume > 0 && (
-              <div>
-                <label className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider block mb-1">Volume</label>
+          {/* Volume */}
+          <div className="min-w-0">
+            <label className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider block mb-1">Volume</label>
+            {selectedVehicleIds.length > 0 && maxVolume > 0 ? (
+              <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <input type="range" min={1} max={maxVolume}
                     value={Math.min(effectiveVolume || 1, maxVolume)}
                     onChange={e => setVolume(Number(e.target.value))}
                     className="flex-1 accent-amber-500" />
-                  <span className="text-xs font-mono text-white w-14 text-right">{effectiveVolume || 0}/{maxVolume}</span>
+                  <span className="text-xs font-mono text-white w-12 text-right">{effectiveVolume || 0}/{maxVolume}</span>
+                </div>
+                <div className="flex justify-between text-xs font-mono text-gray-600">
+                  <span>Inv: {maxInventory}</span>
+                  <span>Cap: {totalCapacity}</span>
                 </div>
               </div>
+            ) : (
+              <div className="text-xs font-mono text-gray-600 italic">Select vehicles</div>
             )}
+          </div>
 
-            {/* Risk — show as soon as there are hops, even before vehicle selection */}
-            {hopData.length > 0 && (
-              <div className="bg-gray-800/60 rounded-lg p-2.5 space-y-1">
-                <div className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider">
-                  Risk{selectedVehicleIds.length === 0 ? ' (estimated)' : ''}
-                </div>
+          {/* Risk */}
+          <div className="min-w-0">
+            <label className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider block mb-1">
+              Risk{hopData.length > 0 && selectedVehicleIds.length === 0 ? ' (est.)' : ''}
+            </label>
+            {hopData.length > 0 ? (
+              <div className="space-y-0.5 max-h-28 overflow-y-auto">
                 {hopData.map((h, i) => (
                   <HopRiskRow key={i}
                     label={`${getCityName(h.origin)} → ${getCityName(h.destination)}`}
                     prob={h.prob} breakdown={h.breakdown} />
                 ))}
-                <div className="border-t border-gray-700 pt-1 flex justify-between text-xs font-mono">
+                <div className="border-t border-gray-700 pt-0.5 flex justify-between text-xs font-mono">
                   <span className="text-gray-300">Success</span>
                   <span className="text-green-400">{Math.round(survivalProb * 100)}%</span>
                 </div>
               </div>
+            ) : (
+              <div className="text-xs font-mono text-gray-600 italic">Build route</div>
             )}
+          </div>
 
-            {/* Payout */}
-            {isRouteComplete && effectiveVolume > 0 && (
-              <div className="bg-gray-800/60 rounded-lg p-2.5 space-y-1">
-                <div className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider">Payout</div>
+          {/* Payout */}
+          <div className="min-w-0">
+            <label className="text-xs font-mono font-semibold text-gray-500 uppercase tracking-wider block mb-1">Payout</label>
+            {isRouteComplete && effectiveVolume > 0 ? (
+              <div className="space-y-0.5">
                 <div className="flex justify-between text-xs font-mono">
                   <span className="text-gray-300">Revenue</span>
                   <span className="text-emerald-400 font-semibold">+${(effectiveVolume * sellPrice).toLocaleString()}</span>
@@ -431,6 +435,8 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
                   <span className="text-blue-400">+{repReward}</span>
                 </div>
               </div>
+            ) : (
+              <div className="text-xs font-mono text-gray-600 italic">Complete route</div>
             )}
           </div>
         </div>
