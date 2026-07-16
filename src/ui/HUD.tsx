@@ -160,18 +160,24 @@ export function HUD({ displayTimeMs }: HUDProps) {
 
       {/* Actions */}
       <div className="flex flex-col gap-1.5 shrink-0">
-        <button
-          onClick={payDownHeat}
-          disabled={!canLayLow}
-          title={`Lay Low: -${CONFIG.layLow.heatReduction} heat ($${layLowCost.toLocaleString()})`}
-          className={`text-xs font-mono px-2.5 py-1 rounded border transition-colors ${
-            canLayLow
-              ? 'bg-gray-800 hover:bg-gray-700 text-orange-400 border-gray-700'
-              : 'bg-gray-900 text-gray-700 border-gray-800 cursor-not-allowed'
-          }`}
-        >
-          Lay Low
-        </button>
+        <div className="relative group">
+          <button
+            onClick={payDownHeat}
+            disabled={!canLayLow}
+            className={`text-xs font-mono px-2.5 py-1 rounded border transition-colors w-full ${
+              canLayLow
+                ? 'bg-gray-800 hover:bg-gray-700 text-orange-400 border-gray-700'
+                : 'bg-gray-900 text-gray-700 border-gray-800 cursor-not-allowed'
+            }`}
+          >
+            Lay Low
+          </button>
+          <div className="absolute top-full mt-1 right-0 bg-gray-950 border border-gray-700 rounded px-2.5 py-1.5 text-xs font-mono shadow-xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50 w-48">
+            <div className="text-gray-300 font-semibold mb-0.5">Lay Low</div>
+            <div className="text-gray-500">Reduce global heat by {CONFIG.layLow.heatReduction} for ${layLowCost.toLocaleString()}</div>
+            <div className="text-gray-600 mt-0.5">{CONFIG.layLow.cooldownWeeks} week cooldown</div>
+          </div>
+        </div>
         <button
           onClick={() => setShowStats(true)}
           className="text-xs font-mono px-2.5 py-1 rounded border bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 border-gray-700 transition-colors"

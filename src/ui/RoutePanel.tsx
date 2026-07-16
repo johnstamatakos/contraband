@@ -22,11 +22,9 @@ export function RoutePanel({ cityId, onClose }: RoutePanelProps) {
   if (!city) return null
 
   const commods = CITY_COMMODITIES[cityId]
-  const connectedCount = new Set(
-    gameState.routes
-      .filter(r => r.origin === cityId || r.destination === cityId)
-      .map(r => (r.origin === cityId ? r.destination : r.origin)),
-  ).size
+  const cityRoutes = gameState.routes.filter(r => r.origin === cityId || r.destination === cityId)
+  const openCount = cityRoutes.filter(r => r.status === 'open' || r.status === 'pending').length
+  const closedCount = cityRoutes.filter(r => r.status === 'closed').length
 
   // Threat presence
   const inspectorHere = gameState.inspector.currentCityId === cityId
@@ -265,9 +263,13 @@ export function RoutePanel({ cityId, onClose }: RoutePanelProps) {
         <div className="px-4 py-3 border-t border-gray-800">
           <button
             onClick={() => setRoutesOpen(true)}
-            className="w-full py-2 rounded-lg bg-blue-900 hover:bg-blue-800 border border-blue-700 text-blue-200 text-sm font-mono font-semibold tracking-wide transition-colors"
+            className={`w-full py-2 rounded-lg border text-sm font-mono font-semibold tracking-wide transition-colors ${
+              closedCount > 0
+                ? 'bg-blue-900 hover:bg-blue-800 border-blue-700 text-blue-200'
+                : 'bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-400'
+            }`}
           >
-            Manage Routes ({connectedCount})
+            {closedCount > 0 ? `Expand Routes (${closedCount} available)` : `Routes (${openCount} open)`}
           </button>
         </div>
       </div>
