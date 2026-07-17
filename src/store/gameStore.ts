@@ -25,6 +25,7 @@ export interface ThreatAlert {
   fine: number
   expiresOnTurn: number
   reason: 'bust' | 'piracy' | 'rival'
+  cityId: string | null   // where to show the map explosion; null if unknown
 }
 
 // ─── Shared game-time snapshot (updated by useGameClock, read by assignVehicle) ─
@@ -162,19 +163,39 @@ interface GameStore {
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 // ── Helper: detect newly impounded vehicles and build alerts ─────────────────
-function detectNewImpounds(prevFleet: Vehicle[], nextFleet: Vehicle[], gameTimeMs: number): ThreatAlert[] {
+function detectNewImpounds(
+  prevFleet: Vehicle[],
+  nextFleet: Vehicle[],
+  prevShipments: ShipmentInTransit[],
+  prevRoutes: Route[],
+  gameTimeMs: number,
+): ThreatAlert[] {
   const prevImpoundedIds = new Set(prevFleet.filter(v => v.isImpounded).map(v => v.id))
   return nextFleet
     .filter(v => v.isImpounded && !prevImpoundedIds.has(v.id) && v.impoundFine !== null && v.impoundExpiresOnTurn !== null)
-    .map(v => ({
-      id: `alert_${v.id}_${gameTimeMs}`,
-      vehicleId: v.id,
-      vehicleName: v.name,
-      vehicleType: v.type,
-      fine: v.impoundFine!,
-      expiresOnTurn: v.impoundExpiresOnTurn!,
-      reason: (v.impoundReason ?? 'rival') as 'bust' | 'piracy' | 'rival',
-    }))
+    .map(v => {
+      // Find where the vehicle was just before impoundment, to place the explosion
+      const prevShipment = prevShipments.find(s => s.vehicleId === v.id)
+      let cityId: string | null = null
+      if (prevShipment) {
+        const route = prevRoutes.find(r => r.id === prevShipment.routeId)
+        // Arrival-based impounds (bust/piracy) fire at the route destination;
+        // for rival sabotage while in transit use that same destination
+        cityId = route
+          ? (prevShipment.reversed ? route.origin : route.destination)
+          : null
+      }
+      return {
+        id: `alert_${v.id}_${gameTimeMs}`,
+        vehicleId: v.id,
+        vehicleName: v.name,
+        vehicleType: v.type,
+        fine: v.impoundFine!,
+        expiresOnTurn: v.impoundExpiresOnTurn!,
+        reason: (v.impoundReason ?? 'rival') as 'bust' | 'piracy' | 'rival',
+        cityId,
+      }
+    })
 }
 
 export const useGameStore = create<GameStore>()(
@@ -224,7 +245,7 @@ export const useGameStore = create<GameStore>()(
     state = { ...state, lifetimeStats: stats }
     state = { ...state, lifetimeStats: peakStats(state) }
 
-    const newAlerts = detectNewImpounds(gameState.fleet, state.fleet, gameTimeMs)
+    const newAlerts = detectNewImpounds(gameState.fleet, state.fleet, gameState.shipmentsInTransit, gameState.routes, gameTimeMs)
     set(s => ({
       gameState: state,
       threatAlerts: [...s.threatAlerts, ...newAlerts],
@@ -286,7 +307,7 @@ export const useGameStore = create<GameStore>()(
     state = { ...state, lifetimeStats: stats }
     state = { ...state, lifetimeStats: peakStats(state) }
 
-    const newAlerts = detectNewImpounds(gameState.fleet, state.fleet, gameTimeMs)
+    const newAlerts = detectNewImpounds(gameState.fleet, state.fleet, gameState.shipmentsInTransit, gameState.routes, gameTimeMs)
     set(s => ({
       gameState: state,
       threatAlerts: [...s.threatAlerts, ...newAlerts],

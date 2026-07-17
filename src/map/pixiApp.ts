@@ -10,6 +10,8 @@ import { ALL_VEHICLES_VISIBLE } from './routeLayer'
 import { buildVehicleLayer, drawVehicles } from './vehicleLayer'
 import { buildThreatLayer, drawThreats } from './threatLayer'
 import { buildWeatherLayer, drawWeatherClouds } from './weatherLayer'
+import { buildExplosionLayer, tickExplosions } from './explosionLayer'
+import type { ExplosionEntry } from './explosionLayer'
 import { useGameStore } from '../store/gameStore'
 import { DAY_MS } from '../engine/constants'
 import { CONFIG } from '../engine/config'
@@ -69,6 +71,9 @@ export async function initPixiApp(
   // ── Weather cloud layer ───────────────────────────────────────────────────
   const weatherGraphics: Graphics = buildWeatherLayer()
 
+  // ── Explosion layer (on top of everything) ────────────────────────────────
+  const explosionLayer: Container = buildExplosionLayer()
+
   // ── City layer ─────────────────────────────────────────────────────────────
   let cityHandle: CityLayerHandle = buildCityLayer(
     projection,
@@ -79,6 +84,7 @@ export async function initPixiApp(
   app.stage.addChild(vehicleLayer)
   app.stage.addChild(threatGraphics)
   app.stage.addChild(weatherGraphics)
+  app.stage.addChild(explosionLayer)
 
   // ── Stage (deselect on click) ──────────────────────────────────────────────
   app.stage.eventMode = 'static'
@@ -88,6 +94,8 @@ export async function initPixiApp(
   // ── Animation state ────────────────────────────────────────────────────────
   let dashOffset = 0
   let pulseTimer = 0
+  let activeExplosions: ExplosionEntry[] = []
+  let prevAlertIds = new Set(useGameStore.getState().threatAlerts.map(a => a.id))
   let currentRoutes = useGameStore.getState().gameState.routes
   let currentShipments = useGameStore.getState().gameState.shipmentsInTransit
   let currentFleet = useGameStore.getState().gameState.fleet
@@ -208,6 +216,7 @@ export async function initPixiApp(
       : []
     drawThreats(threatGraphics, currentInspectorCity, currentInterpolCity, cityHandle.cityMap, pulse, currentInspectorProbNext, currentInterpolProbNext, showProbableNext, interpolAdjacentCities, currentInterpolAdditional)
     drawWeatherClouds(weatherGraphics, currentWeatherEvents, currentRoutes, cityHandle.cityMap, pulse, pulseTimer)
+    activeExplosions = tickExplosions(explosionLayer, activeExplosions, cityHandle.cityMap, performance.now())
   })
 
   const unsubscribeStore = useGameStore.subscribe((state) => {
@@ -223,6 +232,14 @@ export async function initPixiApp(
     currentUnlockedSkills = state.gameState.unlockedSkills
     updateStormPositions()
     cityHandle.updateInventoryBadges(state.gameState.cityInventory)
+
+    // Fire explosion for each newly created threat alert that has a known city
+    for (const alert of state.threatAlerts) {
+      if (!prevAlertIds.has(alert.id) && alert.cityId !== null) {
+        activeExplosions.push({ cityId: alert.cityId, startMs: performance.now(), reason: alert.reason })
+      }
+    }
+    prevAlertIds = new Set(state.threatAlerts.map(a => a.id))
   })
 
   // ── Resize ────────────────────────────────────────────────────────────────
