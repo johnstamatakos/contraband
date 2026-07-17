@@ -28,7 +28,7 @@ export function createVehicleActions(
         id, type, name: `${typeLabel} #${vehicleCounter - 1}`,
         ...spec, isAssigned: false, currentShipmentId: null,
         upgrades: { ...DEFAULT_UPGRADES },
-        isImpounded: false, impoundFine: null, impoundExpiresOnTurn: null,
+        isImpounded: false, impoundFine: null, impoundExpiresOnTurn: null, impoundReason: null,
       }
 
       const newEvent = {

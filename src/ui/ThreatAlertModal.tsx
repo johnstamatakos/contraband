@@ -1,6 +1,12 @@
 import { useGameStore } from '../store/gameStore'
 import { VEHICLE_ICON } from './vehicleConstants'
 
+const REASON_LABEL: Record<'bust' | 'piracy' | 'rival', { title: string; detail: string }> = {
+  bust:   { title: 'Seized by law enforcement', detail: 'Caught running an illicit shipment.' },
+  piracy: { title: 'Seized by pirates',         detail: 'Your vessel was boarded at sea.' },
+  rival:  { title: 'Rival sabotage',            detail: 'A rival operation took out one of your vehicles.' },
+}
+
 export function ThreatAlertModal() {
   const threatAlerts    = useGameStore(s => s.threatAlerts)
   const dismissAlert    = useGameStore(s => s.dismissThreatAlert)
@@ -53,16 +59,19 @@ export function ThreatAlertModal() {
 
         {/* Body */}
         <div className="px-5 py-5 space-y-4">
-          {/* Vehicle info */}
+          {/* Vehicle info + reason */}
           <div className="flex items-center gap-3">
             <span className="text-3xl leading-none">{VEHICLE_ICON[alert.vehicleType]}</span>
             <div>
               <div className="text-base font-mono font-semibold text-white">{alert.vehicleName}</div>
-              <div className="text-xs font-mono text-gray-500 mt-0.5">
-                Fine:{' '}
-                <span className="text-red-400 font-semibold">${alert.fine.toLocaleString()}</span>
-              </div>
+              <div className="text-xs font-mono text-red-500 mt-0.5">{REASON_LABEL[alert.reason].title}</div>
+              <div className="text-xs font-mono text-gray-500 mt-0.5">{REASON_LABEL[alert.reason].detail}</div>
             </div>
+          </div>
+
+          {/* Fine */}
+          <div className="text-xs font-mono text-gray-400">
+            Fine to recover: <span className="text-red-400 font-semibold">${alert.fine.toLocaleString()}</span>
           </div>
 
           {/* Deadline warning */}

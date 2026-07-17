@@ -172,7 +172,7 @@ function stepRivalSabotage(state: GameState, gameTimeMs: number): StepResult {
       ...state,
       fleet: state.fleet.map(v =>
         v.id === target.id
-          ? { ...v, isImpounded: true, impoundFine: ransom, impoundExpiresOnTurn: state.turn + r.impoundWeeks }
+          ? { ...v, isImpounded: true, impoundFine: ransom, impoundExpiresOnTurn: state.turn + r.impoundWeeks, impoundReason: 'rival' as const }
           : v,
       ),
     },

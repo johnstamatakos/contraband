@@ -69,9 +69,10 @@ export interface Vehicle {
   isImpounded: boolean
   impoundFine: number | null          // cash required to recover the vehicle
   impoundExpiresOnTurn: number | null // turn on which the vehicle is permanently lost
+  impoundReason: 'bust' | 'piracy' | 'rival' | null
 }
 
-export type VehicleSpec = Omit<Vehicle, 'id' | 'name' | 'isAssigned' | 'currentShipmentId' | 'type' | 'upgrades' | 'isImpounded' | 'impoundFine' | 'impoundExpiresOnTurn'>
+export type VehicleSpec = Omit<Vehicle, 'id' | 'name' | 'isAssigned' | 'currentShipmentId' | 'type' | 'upgrades' | 'isImpounded' | 'impoundFine' | 'impoundExpiresOnTurn' | 'impoundReason'>
 
 export const VEHICLE_SPECS: Record<VehicleType, VehicleSpec> = CONFIG.vehicles
 

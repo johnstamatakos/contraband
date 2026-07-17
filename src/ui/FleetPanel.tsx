@@ -111,27 +111,33 @@ export function FleetPanel() {
                       </div>
 
                       {/* Impound info + pay button */}
-                      {isImpounded && vehicle.impoundFine !== null ? (
+                      {isImpounded ? (
                         <div className="space-y-1.5">
-                          <div className="text-xs font-mono text-red-400">
-                            Fine: ${vehicle.impoundFine.toLocaleString()}
-                            {weeksLeft !== null && (
-                              <span className="text-red-600 ml-2">· {weeksLeft} week{weeksLeft !== 1 ? 's' : ''} left</span>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => payImpoundFine(vehicle.id)}
-                            disabled={!canPayFine}
-                            className={`w-full py-1.5 text-xs font-mono rounded border transition-colors ${
-                              canPayFine
-                                ? 'bg-red-950 border-red-700 text-red-300 hover:bg-red-900'
-                                : 'bg-gray-900 border-gray-700 text-gray-600 cursor-not-allowed'
-                            }`}
-                          >
-                            Pay Fine — <span className={canPayFine ? 'text-emerald-400' : 'text-gray-600'}>
-                              ${vehicle.impoundFine.toLocaleString()}
-                            </span>
-                          </button>
+                          {vehicle.impoundFine !== null ? (
+                            <>
+                              <div className="text-xs font-mono text-red-400">
+                                Fine: ${vehicle.impoundFine.toLocaleString()}
+                                {weeksLeft !== null && (
+                                  <span className="text-red-600 ml-2">· {weeksLeft} week{weeksLeft !== 1 ? 's' : ''} left</span>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => payImpoundFine(vehicle.id)}
+                                disabled={!canPayFine}
+                                className={`w-full py-1.5 text-xs font-mono rounded border transition-colors ${
+                                  canPayFine
+                                    ? 'bg-red-950 border-red-700 text-red-300 hover:bg-red-900'
+                                    : 'bg-gray-900 border-gray-700 text-gray-600 cursor-not-allowed'
+                                }`}
+                              >
+                                Pay Fine — <span className={canPayFine ? 'text-emerald-400' : 'text-gray-600'}>
+                                  ${vehicle.impoundFine.toLocaleString()}
+                                </span>
+                              </button>
+                            </>
+                          ) : (
+                            <div className="text-xs font-mono text-red-600">Vehicle impounded — check event log for details.</div>
+                          )}
                         </div>
                       ) : (
                         <>
@@ -250,7 +256,7 @@ export function FleetPanel() {
                 return (
                   <button
                     key={type}
-                    onClick={() => { buyVehicle(type); setBuyMenuOpen(false) }}
+                    onClick={() => { buyVehicle(type) }}
                     disabled={!canAfford}
                     className={`w-full rounded-lg px-3 py-3 text-left transition-colors ${
                       canAfford

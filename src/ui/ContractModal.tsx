@@ -231,6 +231,11 @@ export function ContractModal({ contract: contractProp, onClose }: Props) {
 
   const handleAssign = (legIndex: number, vehicleId: string) => {
     assignVehicle(contract.id, vehicleId, legIndex)
+    // Auto-close once all legs have their required vehicles assigned
+    const updated = useGameStore.getState().gameState.contracts.find(c => c.id === contract.id)
+    if (updated && updated.legs.every(leg => leg.assignedVehicleIds.length >= updated.requiredVehicleCount)) {
+      onClose()
+    }
   }
 
   const handleDecline = () => {

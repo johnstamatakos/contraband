@@ -20,6 +20,7 @@ function makeVehicle(overrides: Partial<Vehicle> = {}): Vehicle {
     isImpounded: false,
     impoundFine: null,
     impoundExpiresOnTurn: null,
+    impoundReason: null,
     ...overrides,
   }
 }

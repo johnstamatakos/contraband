@@ -82,6 +82,7 @@ export function resolveArrival(
         isImpounded:          true,
         impoundFine:          ransom,
         impoundExpiresOnTurn: state.turn + ec.piracyImpoundWeeks,
+        impoundReason:        'piracy',
       }
       events.push(makeEvent(gameTimeMs,
         `Pirates seized ${vehicle.name} on ${leg}. Cargo lost. Ransom: $${ransom.toLocaleString()} (${ec.piracyImpoundWeeks} weeks). -${ec.piracyRepLoss} rep.`,
@@ -156,6 +157,7 @@ export function resolveArrival(
               isImpounded:          true,
               impoundFine:          fine,
               impoundExpiresOnTurn: state.turn + ec.impoundRecoveryWeeks,
+              impoundReason:        'bust',
             }
             events.push(makeEvent(gameTimeMs,
               `Busted: ${leg}. -${repLoss} rep, route flagged ${effectiveWeeks} weeks. ${vehicle.name} impounded — pay $${fine.toLocaleString()} within ${ec.impoundRecoveryWeeks} weeks to recover.${riskStr}`,

@@ -124,6 +124,7 @@ export function resolveSmuggleHopArrival(
             ...vehicle, isAssigned: false, currentShipmentId: null,
             isImpounded: true, impoundFine: fine,
             impoundExpiresOnTurn: state.turn + ec.impoundRecoveryWeeks,
+            impoundReason: 'bust' as const,
           }
         } else {
           updatedFleet[vi] = { ...vehicle, isAssigned: false, currentShipmentId: null }

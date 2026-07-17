@@ -24,6 +24,7 @@ export interface ThreatAlert {
   vehicleType: VehicleType
   fine: number
   expiresOnTurn: number
+  reason: 'bust' | 'piracy' | 'rival'
 }
 
 // ─── Shared game-time snapshot (updated by useGameClock, read by assignVehicle) ─
@@ -43,6 +44,7 @@ function makeStartingTrucks(): Vehicle[] {
     isImpounded: false,
     impoundFine: null,
     impoundExpiresOnTurn: null,
+    impoundReason: null,
   }
   return [
     { id: 'truck_01', type: 'truck', name: 'Truck #1', ...shared },
@@ -171,6 +173,7 @@ function detectNewImpounds(prevFleet: Vehicle[], nextFleet: Vehicle[], gameTimeM
       vehicleType: v.type,
       fine: v.impoundFine!,
       expiresOnTurn: v.impoundExpiresOnTurn!,
+      reason: (v.impoundReason ?? 'rival') as 'bust' | 'piracy' | 'rival',
     }))
 }
 
