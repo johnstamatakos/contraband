@@ -1,7 +1,6 @@
 import type { GameState, Vehicle, VehicleType, UpgradeType } from '../engine/gameState'
 import { VEHICLE_SPECS, DEFAULT_UPGRADES } from '../engine/gameState'
 import { CONFIG } from '../engine/config'
-import { getCityName } from '../data/cities'
 import { currentGameTimeMs } from './gameStore'
 import { bumpStats } from './statsHelpers'
 

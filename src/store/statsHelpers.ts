@@ -4,7 +4,7 @@ export function bumpStats(stats: LifetimeStats, delta: Partial<LifetimeStats>): 
   const next = { ...stats }
   for (const [k, v] of Object.entries(delta)) {
     if (typeof v === 'number' && typeof (next as Record<string, unknown>)[k] === 'number') {
-      (next as Record<string, number>)[k] = ((next as Record<string, number>)[k] ?? 0) + v
+      (next as unknown as Record<string, number>)[k] = ((next as unknown as Record<string, number>)[k] ?? 0) + v
     }
   }
   return next

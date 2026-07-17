@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { CITIES, CITY_MAP, getCityName } from '../data/cities'
+import { CITIES, CITY_MAP } from '../data/cities'
 import { createProjection, projectCoord, zoomViewport, DEFAULT_VIEWPORT } from '../map/projection'
 import type { Viewport } from '../map/projection'
 import { drawWorldToCanvas } from '../map/worldCanvas'
@@ -38,7 +38,7 @@ function drawRouteLine(
   routeId: string,
   projection: GeoProjection,
   canvasWidth: number,
-  canvasHeight: number,
+  _canvasHeight: number,
 ) {
   // For antimeridian routes, draw two segments exiting off opposite edges
   if (ANTIMERIDIAN_ROUTES.has(routeId)) {

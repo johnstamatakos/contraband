@@ -15,6 +15,7 @@ import { createSmuggleActions } from './smuggleActions'
 import { createSkillActions } from './skillActions'
 
 export type { SmuggleRunConfig } from './smuggleActions'
+import type { SmuggleRunConfig } from './smuggleActions'
 
 export interface ThreatAlert {
   id: string

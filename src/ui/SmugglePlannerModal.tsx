@@ -182,8 +182,6 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
   const [volume, setVolume] = useState(0)
   const effectiveVolume = volume === 0 && maxVolume > 0 ? maxVolume : Math.min(volume, maxVolume)
 
-  const buyPrice = commodity?.buyPrice ?? 0
-
   // Build hop data for risk display
   const hopData = useMemo(() => {
     if (builtPath.length < 2) return []

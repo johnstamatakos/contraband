@@ -63,7 +63,7 @@ export const saveStorage = {
     localStorage.setItem(name, JSON.stringify({ d: value, s }))
   },
 
-  removeItem: (name: string): void => {
+  removeItem: async (name: string): Promise<void> => {
     localStorage.removeItem(name)
   },
 }

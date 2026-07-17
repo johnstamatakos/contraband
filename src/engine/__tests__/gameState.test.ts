@@ -72,7 +72,7 @@ describe('getNetWorth', () => {
   })
 
   it('returns just cash with empty fleet', () => {
-    const state = { cash: 10000, fleet: [] } as GameState
+    const state = { cash: 10000, fleet: [] } as unknown as GameState
     expect(getNetWorth(state)).toBe(10000)
   })
 })
@@ -82,7 +82,7 @@ describe('getMaintenanceCost', () => {
     const state = {
       fleet: [makeVehicle({ maintenancePerTurn: 275 }), makeVehicle({ id: 'v2', maintenancePerTurn: 650 })],
       unlockedSkills: [],
-    } as GameState
+    } as unknown as GameState
     expect(getMaintenanceCost(state)).toBe(925)
   })
 
