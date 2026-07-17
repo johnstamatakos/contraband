@@ -38,25 +38,8 @@ export function useGameClock() {
     setDisplayTimeMs(0)
   }, [gameVersion])
 
-  // Seed clock from persisted save once async hydration completes.
-  // savedTimeMs transitions 0 → restored value after localStorage is read.
-  useEffect(() => {
-    const unsub = useGameStore.subscribe((state, prevState) => {
-      if (
-        !seededRef.current &&
-        state.savedTimeMs > 0 &&
-        prevState.savedTimeMs === 0 &&
-        gameTimeMsRef.current === 0
-      ) {
-        seededRef.current = true
-        gameTimeMsRef.current = state.savedTimeMs
-        setCurrentGameTimeMs(state.savedTimeMs)
-        setDisplayTimeMs(state.savedTimeMs)
-        lastWeekRef.current = Math.floor(state.savedTimeMs / WEEK_MS)
-      }
-    })
-    return unsub
-  }, [])
+  // (Clock seeding from persisted save is handled inside the rAF loop below,
+  //  so it fires reliably regardless of async hydration timing.)
 
   // 100ms interval: sync displayTimeMs for React rendering (clock display)
   useEffect(() => {
@@ -132,7 +115,17 @@ export function useGameClock() {
     let rafId: number
 
     function tick(now: number) {
-      const { isPaused, hasStarted, gameState } = useGameStore.getState()
+      const { isPaused, hasStarted, savedTimeMs, gameState } = useGameStore.getState()
+
+      // Seed from persisted save — fires once after async hydration completes
+      if (!seededRef.current && savedTimeMs > 0) {
+        seededRef.current = true
+        gameTimeMsRef.current = savedTimeMs
+        lastWeekRef.current = Math.floor(savedTimeMs / WEEK_MS)
+        setCurrentGameTimeMs(savedTimeMs)
+        setDisplayTimeMs(savedTimeMs)
+      }
+
       const reportOpen = gameState.lastWeeklySummary !== null
       const gameOver = gameState.phase === 'game_over'
 
