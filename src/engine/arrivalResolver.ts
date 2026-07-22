@@ -324,7 +324,7 @@ export function resolveArrival(
   let finalContracts: typeof state.contracts
 
   if (autoRedispatch) {
-    const newShipmentId2 = `ship_${gameTimeMs}_r${contract.runsCompleted + 1}`
+    const newShipmentId2 = `ship_${gameTimeMs}_${contract.id}_r${contract.runsCompleted + 1}`
     const newShipment2: ShipmentInTransit = {
       id:               newShipmentId2,
       contractId:       contract.id,
