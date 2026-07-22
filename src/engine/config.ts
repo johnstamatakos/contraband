@@ -393,4 +393,28 @@ export const CONFIG = {
     rafDeltaCapMs: 200,  // max ms a single rAF tick is allowed to advance game time
   },
 
+  // ── Rep escalation thresholds ───────────────────────────────────────────────
+  repEscalation: {
+    rivalDoubleAtRep:            50,    // rival chancePerWeek doubles at this rep
+    interpolExtraPositionAtRep:  70,    // 3rd interpol city unlocks at this rep
+    inspectorBonusScaleAtRep:    85,    // inspector detection bonus increases at this rep
+    inspectorBonusScaled:        0.40,  // scaled inspector bonus (up from 0.25)
+  },
+
+  // ── Periodic crackdowns (law enforcement sweeps) ────────────────────────────
+  crackdown: {
+    repThreshold:              60,   // crackdowns only start when rep >= this
+    intervalWeeks:             4,    // minimum weeks between crackdowns
+    routeHeatGain:             2,    // all open routes get this much extra heat
+    raidChancePerCity:         0.40, // probability each city with inventory gets raided
+    raidHeatGain:              5,    // global heat added per raided city
+    raidFinePerUnitMultiplier: 2.0,  // fine = this × commodity buy price × units seized
+  },
+
+  // ── Fleet size overhead ──────────────────────────────────────────────────────
+  fleet: {
+    maintenanceSurchargeThreshold:  4,    // vehicles beyond this count incur surcharge
+    maintenanceSurchargeMultiplier: 0.5,  // 50% extra maintenance per excess vehicle
+  },
+
 }

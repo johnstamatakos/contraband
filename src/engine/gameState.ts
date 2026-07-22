@@ -211,10 +211,19 @@ export interface DeliveryRecord {
   riskBreakdown: DetectionBreakdown | null
 }
 
+export interface CrackdownRaidResult {
+  cityId: string
+  cityName: string
+  seized: Record<string, number>  // commodityKey → quantity
+  fine: number
+  heatGain: number
+}
+
 export interface WeeklySummary {
   weekNumber: number
   fixedCosts: number          // total cash spent on maintenance this week
   maintenanceCost: number     // fleet maintenance cost
+  fleetSurcharge: number      // extra maintenance for fleet beyond threshold
   deliveryIncome: number      // cash earned from deliveries during the week
   netCashChange: number       // total cash delta (deliveries - fixed costs)
   repChange: number           // net rep delta
@@ -223,6 +232,7 @@ export interface WeeklySummary {
   busts: number
   routesOpened: string[]      // e.g. "Chicago → New York"
   completedDeliveries: DeliveryRecord[]
+  crackdown: { triggered: boolean; raidedCities: CrackdownRaidResult[] } | null
 }
 
 // ─── Weekly stats accumulator (reset each week) ──────────────────────────────
@@ -354,6 +364,8 @@ export interface GameState {
   smuggleRuns: SmuggleRun[]
   // Lifetime stats (never reset, tracks all-time records)
   lifetimeStats: LifetimeStats
+  // Turn on which the last crackdown fired (-999 = never)
+  lastCrackdownTurn: number
 }
 
 // ─── Derived values ────────────────────────────────────────────────────────────
@@ -377,8 +389,22 @@ export function getMaintenanceCost(state: GameState): number {
   return Math.round(base * multiplier)
 }
 
+/** Extra maintenance cost for vehicles beyond the fleet size threshold. */
+export function getFleetSurcharge(state: GameState): number {
+  const { maintenanceSurchargeThreshold, maintenanceSurchargeMultiplier } = CONFIG.fleet
+  const active = state.fleet.filter(v => !v.isImpounded)
+  if (active.length <= maintenanceSurchargeThreshold) return 0
+  const excessVehicles = active.slice(maintenanceSurchargeThreshold)
+  const multiplier = state.unlockedSkills.includes('logistics_1')
+    ? CONFIG.skills.effects.logistics_1.maintenanceMultiplier
+    : 1.0
+  return Math.round(
+    excessVehicles.reduce((sum, v) => sum + v.maintenancePerTurn * maintenanceSurchargeMultiplier, 0) * multiplier,
+  )
+}
+
 export function getFixedCosts(state: GameState): number {
-  return getMaintenanceCost(state)
+  return getMaintenanceCost(state) + getFleetSurcharge(state)
 }
 
 // ─── Route establishment helpers ───────────────────────────────────────────────

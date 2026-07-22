@@ -93,6 +93,7 @@ function createInitialState(): GameState {
     cityInventory: {},
     smuggleRuns: [],
     lifetimeStats: { ...DEFAULT_LIFETIME_STATS },
+    lastCrackdownTurn: -999,
   }
   return { ...base, contracts: generateContracts(base) }
 }

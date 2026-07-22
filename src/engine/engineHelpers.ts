@@ -1,7 +1,7 @@
 import { getCityName } from '../data/cities'
 import { getNetWorth } from './gameState'
 import { CONFIG } from './config'
-import type { GameState, LiveEvent } from './gameState'
+import type { GameState, LiveEvent, CrackdownRaidResult } from './gameState'
 
 // ── Event factory ─────────────────────────────────────────────────────────────
 
@@ -62,4 +62,5 @@ export const INTERPOL_TIERS  = new Set(['international', 'long_haul'])
 export interface StepResult {
   state: GameState
   events: LiveEvent[]
+  crackdownData?: { triggered: boolean; raidedCities: CrackdownRaidResult[] }
 }

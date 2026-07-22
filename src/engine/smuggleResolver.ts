@@ -75,6 +75,7 @@ export function resolveSmuggleHopArrival(
     interpolCityId: state.interpol.currentCityId,
     interpolAdditionalIds: state.interpol.additionalCityIds,
     unlockedSkills: state.unlockedSkills,
+    reputation: state.reputation,
     minConcealmentTier: minConcealment,
     activeLegitRecurringCount: activeLegitRecurring,
     vehicleCount: run.vehicleIds.length,

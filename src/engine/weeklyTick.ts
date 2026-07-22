@@ -1,6 +1,7 @@
 import { CONFIG } from './config'
-import type { GameState, Route, ShipmentInTransit, WeeklySummary } from './gameState'
-import { getFixedCosts, getMaintenanceCost } from './gameState'
+import type { GameState, Route, ShipmentInTransit, WeeklySummary, CrackdownRaidResult } from './gameState'
+import { getFixedCosts, getMaintenanceCost, getFleetSurcharge } from './gameState'
+import { getCityName } from '../data/cities'
 import { generateContracts } from './contracts'
 import { maybeGenerateWeather } from './weather'
 import { moveThreat } from './threatMovement'
@@ -42,13 +43,18 @@ function stepForecast(state: GameState, gameTimeMs: number): StepResult {
 // ── Step 2: Pay fixed costs ───────────────────────────────────────────────────
 
 function stepPayFixedCosts(state: GameState, gameTimeMs: number): StepResult {
-  const total       = getFixedCosts(state)
   const maintenance = getMaintenanceCost(state)
+  const surcharge   = getFleetSurcharge(state)
+  const total       = maintenance + surcharge
 
   if (total === 0) return { state, events: [] }
 
   const events = []
   if (maintenance > 0) events.push(makeEvent(gameTimeMs, `Fleet maintenance: -$${maintenance.toLocaleString()}`, 'info'))
+  if (surcharge > 0) {
+    const excess = state.fleet.filter(v => !v.isImpounded).length - CONFIG.fleet.maintenanceSurchargeThreshold
+    events.push(makeEvent(gameTimeMs, `Fleet overhead: -$${surcharge.toLocaleString()} surcharge (${excess} vehicles over limit).`, 'warning'))
+  }
 
   return { state: { ...state, cash: state.cash - total }, events }
 }
@@ -107,8 +113,14 @@ function stepDecayRouteHeat(state: GameState): StepResult {
   )
 
   const updatedRoutes: Route[] = state.routes.map(r => {
-    if (r.heat <= 0 || activeIllicitRouteIds.has(r.id)) return r
-    return { ...r, heat: Math.max(0, r.heat - 1) }
+    if (activeIllicitRouteIds.has(r.id)) return r
+    const idleTurns = r.lastIllicitRunTurn !== null ? state.turn - r.lastIllicitRunTurn : Infinity
+    const consecutiveDecay = idleTurns >= 2 && r.consecutiveIllicitRuns > 0 ? 1 : 0
+    return {
+      ...r,
+      heat: Math.max(0, r.heat - 1),
+      consecutiveIllicitRuns: Math.max(0, r.consecutiveIllicitRuns - consecutiveDecay),
+    }
   })
 
   return { state: { ...state, routes: updatedRoutes }, events: [] }
@@ -161,7 +173,10 @@ function stepRivalSabotage(state: GameState, gameTimeMs: number): StepResult {
   const eligible = state.fleet.filter(v => !v.isImpounded)
   if (eligible.length < 2) return { state, events: [] }  // never strand the player's only vehicle
 
-  const chance = r.chancePerWeek
+  // At rep 50+ rival activity doubles
+  const chance = state.reputation >= CONFIG.repEscalation.rivalDoubleAtRep
+    ? r.chancePerWeek * 2
+    : r.chancePerWeek
   if (Math.random() >= chance) return { state, events: [] }
 
   const target = eligible[Math.floor(Math.random() * eligible.length)]!
@@ -183,7 +198,71 @@ function stepRivalSabotage(state: GameState, gameTimeMs: number): StepResult {
   }
 }
 
-// ── Step 9b: Repair orphaned recurring contracts ─────────────────────────────
+// ── Step 9b: Law enforcement crackdown ───────────────────────────────────────
+
+function stepCrackdown(state: GameState, gameTimeMs: number): StepResult {
+  const cd = CONFIG.crackdown
+  if (
+    state.reputation < cd.repThreshold ||
+    state.turn - state.lastCrackdownTurn < cd.intervalWeeks
+  ) return { state, events: [] }
+
+  const events = []
+
+  // 1. Apply heat to all open routes
+  const updatedRoutes = state.routes.map(r =>
+    r.status === 'open' ? { ...r, heat: Math.min(5, r.heat + cd.routeHeatGain) } : r,
+  )
+
+  // 2. Roll city inventory raids
+  let newCash = state.cash
+  let newGlobalHeat = state.globalHeat
+  const raidedCities: CrackdownRaidResult[] = []
+  let newCityInventory = { ...state.cityInventory }
+
+  for (const [cityId, inventory] of Object.entries(state.cityInventory)) {
+    const totalUnits = Object.values(inventory).reduce((s, n) => s + n, 0)
+    if (totalUnits === 0) continue
+    if (Math.random() >= cd.raidChancePerCity) continue
+
+    const fine = Math.round(
+      Object.entries(inventory).reduce((sum, [key, qty]) => {
+        const buyPrice = (CONFIG.smuggling.commodities as Record<string, { buyPrice: number }>)[key]?.buyPrice ?? 0
+        return sum + qty * buyPrice * cd.raidFinePerUnitMultiplier
+      }, 0),
+    )
+    newCash -= fine
+    newGlobalHeat = Math.min(100, newGlobalHeat + cd.raidHeatGain)
+    newCityInventory = { ...newCityInventory, [cityId]: {} }
+
+    const cityName = getCityName(cityId)
+    raidedCities.push({ cityId, cityName, seized: { ...inventory }, fine, heatGain: cd.raidHeatGain })
+    events.push(makeEvent(gameTimeMs,
+      `RAID: ${cityName} warehouse seized — -$${fine.toLocaleString()}, +${cd.raidHeatGain} heat.`,
+      'danger',
+    ))
+  }
+
+  events.push(makeEvent(gameTimeMs,
+    `Law enforcement crackdown — all routes +${cd.routeHeatGain} heat.${raidedCities.length > 0 ? ` ${raidedCities.length} warehouse${raidedCities.length > 1 ? 's' : ''} raided.` : ''}`,
+    'danger',
+  ))
+
+  return {
+    state: {
+      ...state,
+      cash: newCash,
+      globalHeat: newGlobalHeat,
+      routes: updatedRoutes,
+      cityInventory: newCityInventory,
+      lastCrackdownTurn: state.turn,
+    },
+    events,
+    crackdownData: { triggered: true, raidedCities },
+  }
+}
+
+// ── Step 9c: Repair orphaned recurring contracts ─────────────────────────────
 // Safety net: if a recurring contract has an assigned vehicle but no active
 // shipment (e.g. state race between arrival resolution and weekly tick),
 // redispatch the vehicle so the contract doesn't get stuck.
@@ -319,6 +398,7 @@ export function resolveWeeklyTick(
   const heatStart       = state.globalHeat
   const openAtStart     = new Set(state.routes.filter(r => r.status === 'open').map(r => r.id))
   const maintenanceCost = getMaintenanceCost(state)
+  const fleetSurcharge  = getFleetSurcharge(state)
 
   const steps = [
     (s: GameState) => stepForecast(s, gameTimeMs),
@@ -332,16 +412,19 @@ export function resolveWeeklyTick(
     (s: GameState) => stepDecayReputation(s, gameTimeMs),
     (s: GameState) => stepExpireImpounds(s, gameTimeMs),
     (s: GameState) => stepRivalSabotage(s, gameTimeMs),
+    (s: GameState) => stepCrackdown(s, gameTimeMs),
     (s: GameState) => stepRepairRecurring(s, gameTimeMs),
     (s: GameState) => stepEndTurn(s, gameTimeMs),
   ]
 
   let current = state
   const allEvents = []
+  let crackdownResult: WeeklySummary['crackdown'] = null
   for (const step of steps) {
     const result = step(current)
     current = result.state
     allEvents.push(...result.events)
+    if (result.crackdownData) crackdownResult = result.crackdownData
   }
 
   const ws = state.weeklyStats
@@ -351,6 +434,7 @@ export function resolveWeeklyTick(
     weekNumber,
     fixedCosts,
     maintenanceCost,
+    fleetSurcharge,
     deliveryIncome:      ws.deliveryIncome,
     netCashChange:       ws.deliveryIncome - fixedCosts,
     repChange:           current.reputation - repStart,
@@ -361,6 +445,7 @@ export function resolveWeeklyTick(
       .filter(r => r.status === 'open' && !openAtStart.has(r.id))
       .map(r => routeLabel(r.origin, r.destination)),
     completedDeliveries: ws.deliveries,
+    crackdown:           crackdownResult,
   }
 
   current = {
@@ -377,7 +462,7 @@ export function resolveWeeklyTick(
 }
 
 function buildEmptySummary(weekNumber: number): WeeklySummary {
-  return { weekNumber, fixedCosts: 0, maintenanceCost: 0, deliveryIncome: 0, netCashChange: 0, repChange: 0, heatChange: 0, contractsCompleted: 0, busts: 0, routesOpened: [], completedDeliveries: [] }
+  return { weekNumber, fixedCosts: 0, maintenanceCost: 0, fleetSurcharge: 0, deliveryIncome: 0, netCashChange: 0, repChange: 0, heatChange: 0, contractsCompleted: 0, busts: 0, routesOpened: [], completedDeliveries: [], crackdown: null }
 }
 
 // Re-export for callers that used to import checkWinLose from turnEngine

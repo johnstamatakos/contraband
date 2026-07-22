@@ -1,6 +1,7 @@
 import { useGameStore } from '../store/gameStore'
 import type { LiveEvent } from '../engine/gameState'
 import { formatGameDateShort } from '../utils/gameTime'
+import { WEEK_MS } from '../engine/constants'
 
 const NOISE_PATTERNS = [
   'Contact fees',
@@ -31,11 +32,12 @@ function entryColor(type: LiveEvent['type']): string {
   }
 }
 
-export function EventFeed() {
+export function EventFeed({ currentTimeMs }: { currentTimeMs: number }) {
   const events = useGameStore(s => s.gameState.events)
 
   const visible = events
     .filter(e => !isNoise(e))
+    .filter(e => currentTimeMs - e.gameTimeMs < 3 * WEEK_MS)
     .slice(-8)
 
   if (visible.length === 0) return null

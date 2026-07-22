@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useGameStore } from '../store/gameStore'
-import type { DeliveryRecord } from '../engine/gameState'
+import type { DeliveryRecord, CrackdownRaidResult } from '../engine/gameState'
+import { getCityName } from '../data/cities'
 import { formatWeekDate } from '../utils/gameTime'
 import { DetectionBadge } from './DetectionBadge'
 
@@ -194,6 +195,35 @@ export function WeeklyReport() {
             </span>
           </div>
 
+          {/* Crackdown alert — shown at top when a crackdown fired this week */}
+          {summary.crackdown?.triggered && (
+            <div className="mb-3 shrink-0 border border-red-800/60 rounded p-3 bg-red-950/30">
+              <div className="text-xs font-mono font-bold text-red-400 uppercase tracking-wider mb-1.5">
+                ⚡ Law Enforcement Crackdown
+              </div>
+              <div className="text-xs font-mono text-red-300 mb-1">
+                All open routes +{2} heat.
+              </div>
+              {summary.crackdown.raidedCities.length > 0 ? (
+                <div className="space-y-1.5 mt-1.5">
+                  {summary.crackdown.raidedCities.map((raid: CrackdownRaidResult) => (
+                    <div key={raid.cityId} className="text-xs font-mono">
+                      <div className="text-red-300 font-semibold">{raid.cityName} warehouse raided</div>
+                      <div className="text-gray-400 ml-2 space-y-0.5">
+                        {Object.entries(raid.seized).map(([key, qty]) => (
+                          <div key={key}>• {qty} units {key.replace(/_/g, ' ')} seized</div>
+                        ))}
+                        <div className="text-red-400">Fine: -${raid.fine.toLocaleString()}  Heat: +{raid.heatGain}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs font-mono text-gray-500 mt-1">No warehouses in your network were raided.</div>
+              )}
+            </div>
+          )}
+
           {/* Deliveries list — collapsible */}
           <div className="mb-3 shrink-0">
             {summary.completedDeliveries.length > 0 ? (
@@ -224,6 +254,12 @@ export function WeeklyReport() {
               <div className="flex justify-between text-xs font-mono">
                 <span className="text-gray-500">Fleet maintenance</span>
                 <span className="text-red-400">-${summary.maintenanceCost.toLocaleString()}</span>
+              </div>
+            )}
+            {summary.fleetSurcharge > 0 && (
+              <div className="flex justify-between text-xs font-mono">
+                <span className="text-orange-500">Fleet overhead surcharge</span>
+                <span className="text-orange-400">-${summary.fleetSurcharge.toLocaleString()}</span>
               </div>
             )}
             {summary.deliveryIncome > 0 && (

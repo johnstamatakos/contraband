@@ -2,6 +2,7 @@ import { getCityName } from '../data/cities'
 import type { GameState } from './gameState'
 import { makeEvent, INSPECTOR_TIERS, INTERPOL_TIERS } from './engineHelpers'
 import type { StepResult } from './engineHelpers'
+import { CONFIG } from './config'
 
 // ── Threat metadata ───────────────────────────────────────────────────────────
 
@@ -155,8 +156,10 @@ export function moveThreat(
   const probableCityId = adjacent.find(c => c !== nextCityId) ?? null
 
   // Rotate additional positions to fresh random non-NA cities (not the primary)
+  // At high rep, Interpol maintains a 3rd simultaneous position
+  const maxAdditional = state.reputation >= CONFIG.repEscalation.interpolExtraPositionAtRep ? 3 : 2
   const othersPool = shuffle(nonNACities.filter(c => c !== nextCityId))
-  const newAdditionals = othersPool.slice(0, 2)
+  const newAdditionals = othersPool.slice(0, maxAdditional)
 
   const illicitNearby = state.shipmentsInTransit.some(s => {
     if (!s.isIllicit) return false

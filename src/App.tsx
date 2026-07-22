@@ -75,7 +75,7 @@ export function App() {
         {/* Main area: Pixi.js map + event feed overlay */}
         <div className="relative flex-1 overflow-hidden flex">
           <MapView gameTimeMsRef={gameTimeMsRef} />
-          <EventFeed />
+          <EventFeed currentTimeMs={displayTimeMs} />
         </div>
       </div>
 

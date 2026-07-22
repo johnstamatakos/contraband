@@ -68,6 +68,13 @@ function clampProbability(raw: number): number {
   return Math.min(d.maxProbability, Math.max(d.minProbability, raw))
 }
 
+/** Returns the effective inspector detection bonus, scaled up at high rep. */
+export function getEffectiveInspectorBonus(reputation: number): number {
+  return reputation >= CONFIG.repEscalation.inspectorBonusScaleAtRep
+    ? CONFIG.repEscalation.inspectorBonusScaled
+    : CONFIG.detection.inspectorBonus
+}
+
 // ─── Contract detection (legacy illicit + existing system) ───────────────────
 
 type DetectionParams = {
@@ -80,6 +87,7 @@ type DetectionParams = {
   concealmentTier?: 0 | 1 | 2
   activeLegitRecurringCount?: number
   interpolAdditionalIds?: string[]
+  reputation?: number
 }
 
 export function detectionChanceWithBreakdown(p: DetectionParams): { prob: number; breakdown: DetectionBreakdown } {
@@ -87,6 +95,7 @@ export function detectionChanceWithBreakdown(p: DetectionParams): { prob: number
     route, allRoutes, globalHeat, inspectorCityId, interpolCityId,
     unlockedSkills = [], concealmentTier = 0,
     activeLegitRecurringCount = 0, interpolAdditionalIds = [],
+    reputation = 0,
   } = p
 
   const { base, routeHeat, globalHeatAdded, consecutiveRuns } = getBaseFactors(route, globalHeat)
@@ -98,7 +107,7 @@ export function detectionChanceWithBreakdown(p: DetectionParams): { prob: number
   if (!isIntl) {
     if (inspectorCityId !== null &&
         (inspectorCityId === route.origin || inspectorCityId === route.destination)) {
-      rawThreatBonus = CONFIG.detection.inspectorBonus
+      rawThreatBonus = getEffectiveInspectorBonus(reputation)
     }
   } else {
     const positions = [...(interpolCityId !== null ? [interpolCityId] : []), ...interpolAdditionalIds]
@@ -152,6 +161,7 @@ export type SmuggleDetectionParams = {
   activeLegitRecurringCount: number
   vehicleCount: number
   volume: number
+  reputation?: number
 }
 
 export function smuggleHopDetection(p: SmuggleDetectionParams): { prob: number; breakdown: DetectionBreakdown } {
@@ -159,7 +169,7 @@ export function smuggleHopDetection(p: SmuggleDetectionParams): { prob: number; 
     routeSegment, allRoutes, globalHeat, arrivalCityId,
     inspectorCityId, interpolCityId, interpolAdditionalIds,
     unlockedSkills, minConcealmentTier, activeLegitRecurringCount,
-    vehicleCount, volume,
+    vehicleCount, volume, reputation = 0,
   } = p
 
   const { base, routeHeat, globalHeatAdded, consecutiveRuns } = getBaseFactors(routeSegment, globalHeat)
@@ -169,7 +179,7 @@ export function smuggleHopDetection(p: SmuggleDetectionParams): { prob: number; 
   // Threat bonus: check at arrival city specifically
   let rawThreatBonus = 0
   if (!isIntl) {
-    if (inspectorCityId === arrivalCityId) rawThreatBonus = CONFIG.detection.inspectorBonus
+    if (inspectorCityId === arrivalCityId) rawThreatBonus = getEffectiveInspectorBonus(reputation)
   } else {
     const positions = [...(interpolCityId !== null ? [interpolCityId] : []), ...interpolAdditionalIds]
     rawThreatBonus = getInterpolBonus(allRoutes, positions, [arrivalCityId])

@@ -62,6 +62,7 @@ export function resolveArrival(
         concealmentTier:         vehicle?.upgrades.concealment ?? 0,
         activeLegitRecurringCount: activeLegitRecurring,
         interpolAdditionalIds:   state.interpol.additionalCityIds,
+        reputation:              state.reputation,
       })
     : null
   const illicitProb = illicitDetection?.prob ?? null
