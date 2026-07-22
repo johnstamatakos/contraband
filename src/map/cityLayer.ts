@@ -29,6 +29,10 @@ export interface CityLayerHandle {
   updatePositions: (projection: GeoProjection) => void
   // Show/hide inventory badges based on per-city inventory
   updateInventoryBadges: (cityInventory: Record<string, Record<string, number>>) => void
+  // Trigger a delivery flash animation on a city
+  triggerDeliveryFlash: (cityId: string) => void
+  // Tick flash animations (call every frame)
+  tickFlashes: (nowMs: number) => void
 }
 
 export function buildCityLayer(
@@ -46,6 +50,10 @@ export function buildCityLayer(
   const cityNodes: Container[] = []
   // Inventory badge graphics per city (index matches CITIES order)
   const inventoryBadges: Graphics[] = []
+  // Active delivery flashes per city index
+  const cityFlashStates: Array<{ startMs: number; color: number } | null> = new Array(CITIES.length).fill(null)
+  // Flash ring graphics per city (separate from dot, drawn on top)
+  const flashRings: Graphics[] = []
 
   for (const city of CITIES) {
     const coord = projectCoord(projection, city.lon, city.lat)
@@ -109,6 +117,12 @@ export function buildCityLayer(
     cityNode.addChild(badge)
     inventoryBadges.push(badge)
 
+    // Flash ring — drawn on top, animated on delivery
+    const flashRing = new Graphics()
+    flashRing.visible = false
+    cityNode.addChild(flashRing)
+    flashRings.push(flashRing)
+
     cityNode.on('pointerdown', (e) => {
       e.stopPropagation()
       onCityClick(city.id)
@@ -149,6 +163,41 @@ export function buildCityLayer(
     }
   }
 
+  // ── Trigger a delivery flash on a city ───────────────────────────────────
+  function triggerDeliveryFlash(cityId: string): void {
+    const idx = CITIES.findIndex(c => c.id === cityId)
+    if (idx === -1) return
+    cityFlashStates[idx] = { startMs: performance.now(), color: 0x34d399 } // emerald
+  }
+
+  // ── Tick flash animations ─────────────────────────────────────────────────
+  function tickFlashes(nowMs: number): void {
+    const FLASH_DURATION = 700
+    for (let i = 0; i < CITIES.length; i++) {
+      const fs = cityFlashStates[i]
+      const ring = flashRings[i]!
+      if (!fs) {
+        ring.visible = false
+        continue
+      }
+      const t = (nowMs - fs.startMs) / FLASH_DURATION
+      if (t >= 1) {
+        cityFlashStates[i] = null
+        ring.visible = false
+        continue
+      }
+      // Ease: expand and fade
+      const scale = 1 + t * 3.5
+      const alpha = 1 - t
+      const city = CITIES[i]!
+      const r = TIER_RADIUS[city.tier]
+      ring.clear()
+      ring.circle(0, 0, r * scale)
+      ring.stroke({ color: fs.color, width: 1.5, alpha })
+      ring.visible = true
+    }
+  }
+
   // Use getters so callers always read the live values after updatePositions()
   return {
     container,
@@ -156,5 +205,7 @@ export function buildCityLayer(
     get cityMap() { return cityMap },
     updatePositions,
     updateInventoryBadges,
+    triggerDeliveryFlash,
+    tickFlashes,
   }
 }

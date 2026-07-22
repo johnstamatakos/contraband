@@ -400,6 +400,12 @@ export function resolveWeeklyTick(
   const maintenanceCost = getMaintenanceCost(state)
   const fleetSurcharge  = getFleetSurcharge(state)
 
+  // Compute rep decay amount using the original state (before steps run)
+  const repDecayAmount = state.hasCompletedFirstIllicit &&
+    state.turnsWithoutIllicitActivity >= CONFIG.economy.repDecayThresholdWeeks
+    ? CONFIG.economy.repDecayPerWeek
+    : 0
+
   const steps = [
     (s: GameState) => stepForecast(s, gameTimeMs),
     (s: GameState) => stepPayFixedCosts(s, gameTimeMs),
@@ -430,17 +436,29 @@ export function resolveWeeklyTick(
   const ws = state.weeklyStats
   const fixedCosts = Math.max(0, cashStart - current.cash)
 
+  // Compute other expenses: cash that left beyond delivery income and fixed costs
+  const prevTickEnd = state.cashAtPrevTickEnd ?? state.cash
+  const otherExpenses = Math.max(0, prevTickEnd + ws.deliveryIncome - cashStart)
+
+  // Actual net cash change from the player's perspective (end of this tick vs end of last tick)
+  const actualNetCashChange = current.cash - prevTickEnd
+
   const summary: WeeklySummary = {
     weekNumber,
     fixedCosts,
     maintenanceCost,
     fleetSurcharge,
+    otherExpenses,
     deliveryIncome:      ws.deliveryIncome,
-    netCashChange:       ws.deliveryIncome - fixedCosts,
+    netCashChange:       actualNetCashChange,
     repChange:           current.reputation - repStart,
     heatChange:          current.globalHeat - heatStart,
     contractsCompleted:  ws.contractsCompleted,
     busts:               ws.busts,
+    repBreakdown: {
+      fromDeliveries: ws.repFromDeliveries,
+      fromDecay: -repDecayAmount,
+    },
     routesOpened:        current.routes
       .filter(r => r.status === 'open' && !openAtStart.has(r.id))
       .map(r => routeLabel(r.origin, r.destination)),
@@ -451,9 +469,10 @@ export function resolveWeeklyTick(
   current = {
     ...current,
     // Rolling 52-week (1-year) profit history for the P&L chart
-    profitHistory: [...(current.profitHistory ?? []), summary.netCashChange].slice(-52),
+    profitHistory: [...(current.profitHistory ?? []), actualNetCashChange].slice(-52),
     weeklyStats: { deliveryIncome: 0, contractsCompleted: 0, busts: 0, repFromDeliveries: 0, heatFromDeliveries: 0, deliveries: [] },
     lastWeeklySummary: summary,
+    cashAtPrevTickEnd: current.cash,
   }
   current = appendEvents(current, allEvents)
   current = checkWinLose(current, gameTimeMs)
@@ -462,7 +481,14 @@ export function resolveWeeklyTick(
 }
 
 function buildEmptySummary(weekNumber: number): WeeklySummary {
-  return { weekNumber, fixedCosts: 0, maintenanceCost: 0, fleetSurcharge: 0, deliveryIncome: 0, netCashChange: 0, repChange: 0, heatChange: 0, contractsCompleted: 0, busts: 0, routesOpened: [], completedDeliveries: [], crackdown: null }
+  return {
+    weekNumber, fixedCosts: 0, maintenanceCost: 0, fleetSurcharge: 0,
+    otherExpenses: 0,
+    deliveryIncome: 0, netCashChange: 0, repChange: 0, heatChange: 0,
+    contractsCompleted: 0, busts: 0,
+    repBreakdown: { fromDeliveries: 0, fromDecay: 0 },
+    routesOpened: [], completedDeliveries: [], crackdown: null,
+  }
 }
 
 // Re-export for callers that used to import checkWinLose from turnEngine

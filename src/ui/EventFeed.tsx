@@ -37,7 +37,10 @@ export function EventFeed({ currentTimeMs }: { currentTimeMs: number }) {
 
   const visible = events
     .filter(e => !isNoise(e))
-    .filter(e => currentTimeMs - e.gameTimeMs < 3 * WEEK_MS)
+    .filter(e => {
+      const ageLimit = e.type === 'danger' ? 4 * WEEK_MS : 1.5 * WEEK_MS
+      return currentTimeMs - e.gameTimeMs < ageLimit
+    })
     .slice(-8)
 
   if (visible.length === 0) return null

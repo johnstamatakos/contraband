@@ -94,6 +94,7 @@ function createInitialState(): GameState {
     smuggleRuns: [],
     lifetimeStats: { ...DEFAULT_LIFETIME_STATS },
     lastCrackdownTurn: -999,
+    cashAtPrevTickEnd: CONFIG.start.cash,
   }
   return { ...base, contracts: generateContracts(base) }
 }

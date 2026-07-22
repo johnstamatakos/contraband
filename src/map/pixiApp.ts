@@ -217,9 +217,24 @@ export async function initPixiApp(
     drawThreats(threatGraphics, currentInspectorCity, currentInterpolCity, cityHandle.cityMap, pulse, currentInspectorProbNext, currentInterpolProbNext, showProbableNext, interpolAdjacentCities, currentInterpolAdditional)
     drawWeatherClouds(weatherGraphics, currentWeatherEvents, currentRoutes, cityHandle.cityMap, pulse, pulseTimer)
     activeExplosions = tickExplosions(explosionLayer, activeExplosions, cityHandle.cityMap, performance.now())
+    cityHandle.tickFlashes(performance.now())
   })
 
   const unsubscribeStore = useGameStore.subscribe((state) => {
+    // 1. FIRST: detect changes using old state values before overwriting them
+
+    // Detect shipment arrivals and flash destination city for non-illicit deliveries
+    const newShipmentIds = new Set(state.gameState.shipmentsInTransit.map(s => s.id))
+    for (const s of currentShipments) {
+      if (!newShipmentIds.has(s.id) && !s.isIllicit) {
+        // Legitimate shipment arrived — flash the destination
+        const route = currentRoutes.find(r => r.id === s.routeId)
+        const destCityId = s.reversed ? route?.origin : route?.destination
+        if (destCityId) cityHandle.triggerDeliveryFlash(destCityId)
+      }
+    }
+
+    // 2. THEN: update current state variables
     currentRoutes = state.gameState.routes
     currentShipments = state.gameState.shipmentsInTransit
     currentFleet = state.gameState.fleet
@@ -233,7 +248,7 @@ export async function initPixiApp(
     updateStormPositions()
     cityHandle.updateInventoryBadges(state.gameState.cityInventory)
 
-    // Fire explosion for each newly created threat alert that has a known city
+    // 3. Fire explosion for each newly created threat alert that has a known city
     for (const alert of state.threatAlerts) {
       if (!prevAlertIds.has(alert.id) && alert.cityId !== null) {
         activeExplosions.push({ cityId: alert.cityId, startMs: performance.now(), reason: alert.reason })

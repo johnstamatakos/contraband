@@ -93,10 +93,10 @@ export const CONFIG = {
 
   // ── Contract board ──────────────────────────────────────────────────────────
   contracts: {
-    boardSize:    12,  // target number of unassigned contracts on the board
+    boardSize:    16,  // target number of unassigned contracts on the board
     minLegit:     3,   // floor: always keep at least this many legit contracts
-    maxPerRoute:  2,   // max contracts for any single route pair on the board
-    maxPerCity:   2,   // max contracts involving the same city on the board
+    maxPerRoute:  3,   // max contracts for any single route pair on the board
+    maxPerCity:   4,   // max contracts involving the same city on the board
 
     commodityMatchBonus: 1.25,  // +25% payout when cargo matches city export→import flow
 

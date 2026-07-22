@@ -224,12 +224,14 @@ export interface WeeklySummary {
   fixedCosts: number          // total cash spent on maintenance this week
   maintenanceCost: number     // fleet maintenance cost
   fleetSurcharge: number      // extra maintenance for fleet beyond threshold
+  otherExpenses: number       // other cash outflows (routes, upgrades, commodity purchases, etc.)
   deliveryIncome: number      // cash earned from deliveries during the week
   netCashChange: number       // total cash delta (deliveries - fixed costs)
   repChange: number           // net rep delta
   heatChange: number          // net global heat delta
   contractsCompleted: number
   busts: number
+  repBreakdown: { fromDeliveries: number; fromDecay: number }
   routesOpened: string[]      // e.g. "Chicago → New York"
   completedDeliveries: DeliveryRecord[]
   crackdown: { triggered: boolean; raidedCities: CrackdownRaidResult[] } | null
@@ -366,6 +368,8 @@ export interface GameState {
   lifetimeStats: LifetimeStats
   // Turn on which the last crackdown fired (-999 = never)
   lastCrackdownTurn: number
+  // Cash at the end of the previous weekly tick (used for P&L expense tracking)
+  cashAtPrevTickEnd: number
 }
 
 // ─── Derived values ────────────────────────────────────────────────────────────

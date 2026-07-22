@@ -37,6 +37,8 @@ export function FleetPanel() {
   const [upgradingVehicleId, setUpgradingVehicleId] = useState<string | null>(null)
   const [confirmSellId, setConfirmSellId]           = useState<string | null>(null)
   const [buyMenuOpen, setBuyMenuOpen]               = useState(false)
+  const [filterStatus, setFilterStatus] = useState<'all' | 'idle' | 'impounded'>('all')
+  const [filterType, setFilterType] = useState<VehicleType | 'all'>('all')
 
   const availableCount = fleet.filter(v => !v.isImpounded).length
 
@@ -49,19 +51,86 @@ export function FleetPanel() {
     vehicles: fleet.filter(v => v.type === type),
   })).filter(g => g.vehicles.length > 0)
 
+  const filteredGroupedFleet = groupedFleet
+    .filter(g => filterType === 'all' || g.type === filterType)
+    .map(g => ({
+      ...g,
+      vehicles: g.vehicles.filter(v => {
+        if (filterStatus === 'idle') return !v.isAssigned && !v.isImpounded
+        if (filterStatus === 'impounded') return v.isImpounded
+        return true
+      })
+    }))
+    .filter(g => g.vehicles.length > 0)
+
   return (
     <>
       <div className="flex flex-col h-full overflow-hidden">
 
         {/* ── FLEET SECTIONS ─────────────────────────────────────── */}
         <div className="overflow-y-auto flex-1 px-3 py-3 space-y-4">
-          {groupedFleet.length === 0 && (
+
+          {/* Filter chips — only shown when fleet has more than 2 vehicles */}
+          {fleet.length > 2 && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pb-2 border-b border-gray-800">
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-mono text-gray-600 uppercase tracking-wider">Status:</span>
+                {(['all', 'idle', 'impounded'] as const).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setFilterStatus(s)}
+                    className={`text-xs font-mono px-1.5 py-0.5 rounded transition-colors uppercase ${
+                      filterStatus === s
+                        ? 'bg-amber-900/60 text-amber-400 border border-amber-700'
+                        : 'bg-gray-800 text-gray-500 border border-gray-700 hover:text-gray-300'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-mono text-gray-600 uppercase tracking-wider">Type:</span>
+                <button
+                  onClick={() => setFilterType('all')}
+                  className={`text-xs font-mono px-1.5 py-0.5 rounded transition-colors uppercase ${
+                    filterType === 'all'
+                      ? 'bg-amber-900/60 text-amber-400 border border-amber-700'
+                      : 'bg-gray-800 text-gray-500 border border-gray-700 hover:text-gray-300'
+                  }`}
+                >
+                  all
+                </button>
+                {(['truck', 'plane', 'ship'] as VehicleType[]).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setFilterType(t)}
+                    className={`text-xs font-mono px-1.5 py-0.5 rounded transition-colors ${
+                      filterType === t
+                        ? 'bg-amber-900/60 text-amber-400 border border-amber-700'
+                        : 'bg-gray-800 text-gray-500 border border-gray-700 hover:text-gray-300'
+                    }`}
+                  >
+                    {VEHICLE_ICON[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {filteredGroupedFleet.length === 0 && groupedFleet.length === 0 && (
             <div className="text-center text-gray-600 font-mono text-xs pt-8">
               No vehicles. Buy one below.
             </div>
           )}
 
-          {groupedFleet.map(({ type, vehicles }) => (
+          {filteredGroupedFleet.length === 0 && groupedFleet.length > 0 && (
+            <div className="text-center text-gray-600 font-mono text-xs pt-8">
+              No vehicles match the current filters.
+            </div>
+          )}
+
+          {filteredGroupedFleet.map(({ type, vehicles }) => (
             <div key={type}>
               {/* Section header */}
               <div className="flex items-center gap-2 mb-2">

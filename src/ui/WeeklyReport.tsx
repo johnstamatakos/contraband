@@ -4,19 +4,12 @@ import type { DeliveryRecord, CrackdownRaidResult } from '../engine/gameState'
 import { formatWeekDate } from '../utils/gameTime'
 import { DetectionBadge } from './DetectionBadge'
 
-// ── P&L bar chart ─────────────────────────────────────────────────────────────
-
-function fmtK(v: number): string {
-  const abs = Math.abs(v)
-  const sign = v < 0 ? '-' : ''
-  return abs >= 1000 ? `${sign}$${(abs / 1000).toFixed(abs >= 10_000 ? 0 : 1)}k` : `${sign}$${abs}`
-}
+// ── P&L line chart ────────────────────────────────────────────────────────────
 
 function ProfitChart({ history }: { history: number[] }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
 
-  const weeks = history.slice(-8)
-
+  const weeks = history.slice(-10)
   if (weeks.length < 2) {
     return (
       <p className="text-xs font-mono text-gray-700 text-center py-4 italic">
@@ -25,33 +18,40 @@ function ProfitChart({ history }: { history: number[] }) {
     )
   }
 
-  const W = 440, H = 160
-  const padL = 6, padR = 6, padT = 30, padB = 22
+  const W = 440, H = 140
+  const padL = 42, padR = 12, padT = 24, padB = 20
   const chartW = W - padL - padR
   const chartH = H - padT - padB
-  const n      = weeks.length
-  const gap    = 6
-  const barW   = Math.floor((chartW - gap * (n - 1)) / n)
+  const n = weeks.length
 
-  const maxAbs  = Math.max(...weeks.map(Math.abs), 1)
-  const hasNeg  = weeks.some(v => v < 0)
-  const zeroY   = hasNeg ? padT + chartH / 2 : padT + chartH
-  const maxBarH = (hasNeg ? chartH / 2 : chartH) - 4
+  const minVal = Math.min(...weeks, 0)
+  const maxVal = Math.max(...weeks, 0)
+  const range = maxVal - minVal || 1
 
-  const getBarY = (v: number) => zeroY - (v / maxAbs) * maxBarH
-  const getX    = (i: number) => padL + i * (barW + gap)
-  const total   = weeks.reduce((a, b) => a + b, 0)
+  const zeroY = padT + ((maxVal) / range) * chartH
 
-  // Hover tooltip (full value)
+  const getX = (i: number) => padL + (i / (n - 1)) * chartW
+  const getY = (v: number) => padT + ((maxVal - v) / range) * chartH
+
+  const total = weeks.reduce((a, b) => a + b, 0)
+
+  // Build SVG path
+  const points = weeks.map((v, i) => `${getX(i).toFixed(1)},${getY(v).toFixed(1)}`)
+  const linePath = `M ${points.join(' L ')}`
+
+  // Area fill path (close back to zero line)
+  const areaPoints = weeks.map((v, i) => `${getX(i).toFixed(1)},${getY(v).toFixed(1)}`).join(' L ')
+  const areaPath = `M ${getX(0).toFixed(1)},${zeroY.toFixed(1)} L ${areaPoints} L ${getX(n-1).toFixed(1)},${zeroY.toFixed(1)} Z`
+
   const hIdx = hoveredIdx
-  const hv   = hIdx !== null ? weeks[hIdx]! : 0
-  const tooltipLabel = hIdx !== null
-    ? `Wk ${history.length - weeks.length + hIdx + 1}: ${hv >= 0 ? '+' : ''}$${Math.abs(hv).toLocaleString()}`
-    : ''
-  const tooltipW = tooltipLabel.length * 5.4 + 12
-  const tooltipX = hIdx !== null
-    ? Math.min(Math.max(getX(hIdx) + barW / 2 - tooltipW / 2, padL), W - padR - tooltipW)
-    : 0
+  const hv = hIdx !== null ? weeks[hIdx]! : 0
+  const weekNum = hIdx !== null ? history.length - weeks.length + hIdx + 1 : 0
+
+  // Y axis labels
+  const yLabels = []
+  if (maxVal > 0) yLabels.push({ v: maxVal, y: getY(maxVal) })
+  if (minVal < 0) yLabels.push({ v: minVal, y: getY(minVal) })
+  yLabels.push({ v: 0, y: zeroY })
 
   return (
     <div>
@@ -64,58 +64,72 @@ function ProfitChart({ history }: { history: number[] }) {
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H }}
         onMouseLeave={() => setHoveredIdx(null)}>
 
+        {/* Y axis labels */}
+        {yLabels.map(({ v, y }) => (
+          <text key={v} x={padL - 4} y={y + 3.5}
+            textAnchor="end" fontSize="8" fill="#4b5563"
+            fontFamily="ui-monospace,monospace">
+            {v >= 1000 ? `$${(v/1000).toFixed(0)}k` : v <= -1000 ? `-$${(Math.abs(v)/1000).toFixed(0)}k` : `$${v}`}
+          </text>
+        ))}
+
         {/* Zero baseline */}
         <line x1={padL} y1={zeroY} x2={W - padR} y2={zeroY}
-          stroke="#4b5563" strokeWidth="1" strokeDasharray="3,3" />
+          stroke="#374151" strokeWidth="1" strokeDasharray="3,3" />
 
-        {/* Bars + labels */}
+        {/* Area fill */}
+        <path d={areaPath} fill="#10b981" opacity="0.08" />
+
+        {/* Line */}
+        <path d={linePath} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinejoin="round" />
+
+        {/* Data points */}
         {weeks.map((v, i) => {
-          const x      = getX(i)
-          const barY   = getBarY(v)
-          const barTop = Math.min(barY, zeroY)
-          const barH   = Math.max(Math.abs(zeroY - barY), 2)
-          const isHov  = hoveredIdx === i
-          const weekNum = history.length - weeks.length + i + 1
-
-          const color  = v >= 0
-            ? (isHov ? '#34d399' : '#10b981')
-            : (isHov ? '#f87171' : '#ef4444')
-
-          // Abbreviated value label above positive / below negative bars
-          const valY = v >= 0 ? barTop - 5 : barTop + barH + 12
-
+          const x = getX(i)
+          const y = getY(v)
+          const isHov = hoveredIdx === i
+          const wNum = history.length - weeks.length + i + 1
           return (
             <g key={i} onMouseEnter={() => setHoveredIdx(i)} style={{ cursor: 'default' }}>
-              <rect x={x} y={barTop} width={barW} height={barH}
-                fill={color} rx="2" opacity={isHov ? 1 : 0.78} />
-              <text x={x + barW / 2} y={valY}
-                textAnchor="middle" fontSize="8.5"
-                fill={color} fontFamily="ui-monospace,monospace"
-                fontWeight={isHov ? 'bold' : 'normal'}>
-                {(v >= 0 ? '+' : '') + fmtK(v)}
-              </text>
-              <text x={x + barW / 2} y={H - 4}
+              {/* Invisible hover target */}
+              <rect x={x - 12} y={padT} width={24} height={chartH} fill="transparent" />
+              {/* Vertical hover line */}
+              {isHov && (
+                <line x1={x} y1={padT} x2={x} y2={padT + chartH}
+                  stroke="#374151" strokeWidth="1" strokeDasharray="2,2" />
+              )}
+              <circle cx={x} cy={y} r={isHov ? 5 : 3}
+                fill={v >= 0 ? '#10b981' : '#ef4444'}
+                stroke={isHov ? '#fff' : 'none'} strokeWidth="1.5" />
+              {/* Week label on x axis */}
+              <text x={x} y={H - 4}
                 textAnchor="middle" fontSize="7.5"
-                fill={isHov ? '#d1d5db' : '#6b7280'}
+                fill={isHov ? '#d1d5db' : '#4b5563'}
                 fontFamily="ui-monospace,monospace">
-                W{weekNum}
+                W{wNum}
               </text>
             </g>
           )
         })}
 
-        {/* Full-value tooltip on hover */}
-        {hIdx !== null && (
-          <>
-            <rect x={tooltipX} y={4} width={tooltipW} height={15}
-              rx="2" fill="#111827" stroke="#374151" strokeWidth="0.75" />
-            <text x={tooltipX + tooltipW / 2} y={14.5}
-              textAnchor="middle" fontSize="8" fill="#f9fafb"
-              fontFamily="ui-monospace,monospace">
-              {tooltipLabel}
-            </text>
-          </>
-        )}
+        {/* Hover tooltip */}
+        {hIdx !== null && (() => {
+          const x = getX(hIdx)
+          const label = `Wk ${weekNum}: ${hv >= 0 ? '+' : ''}$${Math.abs(hv).toLocaleString()}`
+          const tw = label.length * 7.2 + 16
+          const tx = Math.min(Math.max(x - tw / 2, padL), W - padR - tw)
+          return (
+            <>
+              <rect x={tx} y={4} width={tw} height={18}
+                rx="3" fill="#1f2937" stroke="#374151" strokeWidth="0.75" />
+              <text x={tx + tw / 2} y={16}
+                textAnchor="middle" fontSize="11" fill="#f9fafb"
+                fontFamily="ui-monospace,monospace" fontWeight="600">
+                {label}
+              </text>
+            </>
+          )
+        })()}
       </svg>
     </div>
   )
@@ -261,6 +275,12 @@ export function WeeklyReport() {
                 <span className="text-orange-400">-${summary.fleetSurcharge.toLocaleString()}</span>
               </div>
             )}
+            {summary.otherExpenses > 0 && (
+              <div className="flex justify-between text-xs font-mono">
+                <span className="text-gray-500">Other expenses</span>
+                <span className="text-red-400">-${summary.otherExpenses.toLocaleString()}</span>
+              </div>
+            )}
             {summary.deliveryIncome > 0 && (
               <div className="flex justify-between text-xs font-mono">
                 <span className="text-gray-500">Delivery income</span>
@@ -278,11 +298,37 @@ export function WeeklyReport() {
           {/* Rep / Heat / Busts row */}
           <div className="flex gap-4 mb-3 text-xs font-mono shrink-0">
             {summary.repChange !== 0 && (
-              <div>
+              <div className="relative group">
                 <span className="text-gray-500">Rep </span>
-                <span className={summary.repChange > 0 ? 'text-blue-400' : 'text-red-400'}>
+                <span className={`${summary.repChange > 0 ? 'text-blue-400' : 'text-red-400'} border-b border-dashed border-gray-600 cursor-help`}>
                   {repSign}{summary.repChange}
                 </span>
+                {/* Hover tooltip */}
+                {summary.repBreakdown && (
+                  <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10 bg-gray-900 border border-gray-700 rounded px-2.5 py-2 text-xs font-mono whitespace-nowrap shadow-xl">
+                    {summary.repBreakdown.fromDeliveries !== 0 && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-gray-400">Deliveries</span>
+                        <span className="text-blue-400">+{summary.repBreakdown.fromDeliveries}</span>
+                      </div>
+                    )}
+                    {summary.repBreakdown.fromDecay !== 0 && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-gray-400">Inactivity</span>
+                        <span className="text-orange-400">{summary.repBreakdown.fromDecay}</span>
+                      </div>
+                    )}
+                    {(() => {
+                      const bustLoss = summary.repChange - summary.repBreakdown.fromDeliveries - summary.repBreakdown.fromDecay
+                      return bustLoss !== 0 ? (
+                        <div className="flex justify-between gap-4">
+                          <span className="text-gray-400">Busts/events</span>
+                          <span className="text-red-400">{bustLoss > 0 ? '+' : ''}{bustLoss}</span>
+                        </div>
+                      ) : null
+                    })()}
+                  </div>
+                )}
               </div>
             )}
             {summary.heatChange !== 0 && (
