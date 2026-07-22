@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 import type { DeliveryRecord, CrackdownRaidResult } from '../engine/gameState'
-import { getCityName } from '../data/cities'
 import { formatWeekDate } from '../utils/gameTime'
 import { DetectionBadge } from './DetectionBadge'
 

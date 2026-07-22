@@ -1,6 +1,6 @@
 import { CONFIG } from './config'
 import type { GameState, Route, ShipmentInTransit, WeeklySummary, CrackdownRaidResult } from './gameState'
-import { getFixedCosts, getMaintenanceCost, getFleetSurcharge } from './gameState'
+import { getMaintenanceCost, getFleetSurcharge } from './gameState'
 import { getCityName } from '../data/cities'
 import { generateContracts } from './contracts'
 import { maybeGenerateWeather } from './weather'
