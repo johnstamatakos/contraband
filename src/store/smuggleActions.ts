@@ -52,6 +52,13 @@ export function createSmuggleActions(
           cash: gameState.cash - totalCost,
           cityInventory: cityInv,
           events: [...gameState.events, newEvent].slice(-CONFIG.ui.eventFeedCap),
+          weeklyStats: {
+            ...gameState.weeklyStats,
+            expenseBreakdown: {
+              ...gameState.weeklyStats.expenseBreakdown,
+              'Commodities': (gameState.weeklyStats.expenseBreakdown['Commodities'] ?? 0) + totalCost,
+            },
+          },
           lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: totalCost }),
         },
       })

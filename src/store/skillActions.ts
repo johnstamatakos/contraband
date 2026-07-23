@@ -30,6 +30,13 @@ export function createSkillActions(
           globalHeat: newHeat,
           lastLayLowTurn: gameState.turn,
           events: [...gameState.events, newEvent].slice(-50),
+          weeklyStats: {
+            ...gameState.weeklyStats,
+            expenseBreakdown: {
+              ...gameState.weeklyStats.expenseBreakdown,
+              'Lay Low': (gameState.weeklyStats.expenseBreakdown['Lay Low'] ?? 0) + cost,
+            },
+          },
           lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: cost }),
         },
       })
@@ -68,6 +75,13 @@ export function createSkillActions(
           inspector: revealsThreats ? { ...gameState.inspector, isTrackedByInformant: true } : gameState.inspector,
           interpol: revealsThreats ? { ...gameState.interpol, isTrackedByInformant: true } : gameState.interpol,
           events: [...gameState.events, newEvent].slice(-50),
+          weeklyStats: {
+            ...gameState.weeklyStats,
+            expenseBreakdown: {
+              ...gameState.weeklyStats.expenseBreakdown,
+              'Skills': (gameState.weeklyStats.expenseBreakdown['Skills'] ?? 0) + cost,
+            },
+          },
           lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: cost, skillsUnlocked: 1 }),
         },
       })

@@ -276,9 +276,19 @@ export function WeeklyReport() {
               </div>
             )}
             {summary.otherExpenses > 0 && (
-              <div className="flex justify-between text-xs font-mono">
-                <span className="text-gray-500">Other expenses</span>
+              <div className="relative group flex justify-between text-xs font-mono">
+                <span className="text-gray-500 border-b border-dashed border-gray-700 cursor-help">Other expenses</span>
                 <span className="text-red-400">-${summary.otherExpenses.toLocaleString()}</span>
+                {summary.expenseBreakdown && Object.keys(summary.expenseBreakdown).length > 0 && (
+                  <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10 bg-gray-900 border border-gray-700 rounded px-2.5 py-2 text-xs font-mono whitespace-nowrap shadow-xl">
+                    {Object.entries(summary.expenseBreakdown).map(([cat, amt]) => (
+                      <div key={cat} className="flex justify-between gap-6">
+                        <span className="text-gray-400">{cat}</span>
+                        <span className="text-red-400">-${amt.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {summary.deliveryIncome > 0 && (

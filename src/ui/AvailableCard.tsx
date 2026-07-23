@@ -30,12 +30,11 @@ export function AvailableCard({ contract, onOpen, onDecline }: {
     : []
 
   const isMultiLeg   = contract.legs.length > 1
-  const isIndefinite = contract.isRecurring && contract.totalRuns >= 999
   const hasReqs      = Object.keys(contract.vehicleRequirements).length > 0
   const skillsLocked = contract.requiredSkills.some(s => !gameState.unlockedSkills.includes(s))
 
-  const deadlineUrgent = !isIndefinite && contract.deadline <= 1
-  const deadlineWarn   = !isIndefinite && contract.deadline <= 2
+  const deadlineUrgent = contract.deadline <= 1
+  const deadlineWarn   = contract.deadline <= 2
 
   return (
     <div className="relative rounded-lg border transition-colors border-gray-700/60 bg-gray-900 hover:bg-gray-800 hover:border-gray-600">
@@ -49,7 +48,7 @@ export function AvailableCard({ contract, onOpen, onDecline }: {
               <span className="text-xs font-mono px-1 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-900">{contract.legs.length}-LEG</span>
             )}
             <span className="text-sm font-mono font-bold text-emerald-400">
-              ${contract.payout.toLocaleString()}{contract.isRecurring ? '/run' : ''}
+              ${contract.payout.toLocaleString()}
             </span>
           </div>
         </div>
@@ -59,10 +58,9 @@ export function AvailableCard({ contract, onOpen, onDecline }: {
           </span>
           <span className="text-gray-700">·</span>
           <span className={deadlineUrgent ? 'text-red-400' : deadlineWarn ? 'text-yellow-500' : 'text-gray-500'}>
-            {isIndefinite ? '∞' : `${contract.deadline}w`}
+            {contract.deadline}w
           </span>
           {isMultiLeg && (<><span className="text-gray-700">·</span><span className="text-gray-500">{contract.legs.length} legs</span></>)}
-          {contract.isRecurring && (<><span className="text-gray-700">·</span><span className="text-violet-400">∞ recurring</span></>)}
         </div>
         {(hasReqs || skillsLocked) && (
           <div className="text-xs font-mono">

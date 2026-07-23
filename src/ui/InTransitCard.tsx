@@ -16,8 +16,7 @@ export function InTransitCard({ contract, now, onOpen }: {
     ? CONFIG.skills.effects.logistics_2.transitTimeMultiplier
     : 1.0
 
-  const isMultiLeg   = contract.legs.length > 1
-  const isIndefinite = contract.isRecurring && contract.totalRuns >= 999
+  const isMultiLeg = contract.legs.length > 1
 
   const legDisplays = contract.legs.map((leg, i) => {
     const isComplete = leg.completedAt !== null
@@ -104,7 +103,7 @@ export function InTransitCard({ contract, now, onOpen }: {
 
       <div className="text-xs font-mono text-gray-600 pt-0.5">
         ${contract.payout.toLocaleString()} on delivery
-        {contract.isRecurring && <span> · {contract.runsCompleted}/{isIndefinite ? '∞' : contract.totalRuns} runs</span>}
+        {contract.isRecurring && <span> · Run {contract.runsCompleted + 1}</span>}
       </div>
     </button>
   )

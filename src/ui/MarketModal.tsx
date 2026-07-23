@@ -115,12 +115,10 @@ function PriceChart({
 // ── Commodity card ────────────────────────────────────────────────────────────
 
 function CommodityCard({
-  commodityKey,
   def,
   priceData,
   history,
 }: {
-  commodityKey: string
   def: { displayName: string; icon: string; buyPrice: number }
   priceData: { index: number; trend: number }
   history: number[]
@@ -258,7 +256,6 @@ export function MarketModal({ onClose }: { onClose: () => void }) {
               return (
                 <CommodityCard
                   key={key}
-                  commodityKey={key}
                   def={def}
                   priceData={priceData}
                   history={history}

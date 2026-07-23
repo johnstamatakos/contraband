@@ -44,6 +44,13 @@ export function createVehicleActions(
           cash: gameState.cash - spec.purchasePrice,
           fleet: newFleet,
           events: [...gameState.events, newEvent].slice(-50),
+          weeklyStats: {
+            ...gameState.weeklyStats,
+            expenseBreakdown: {
+              ...gameState.weeklyStats.expenseBreakdown,
+              'Vehicles': (gameState.weeklyStats.expenseBreakdown['Vehicles'] ?? 0) + spec.purchasePrice,
+            },
+          },
           lifetimeStats: {
             ...bumpStats(gameState.lifetimeStats, { totalMoneySpent: spec.purchasePrice, vehiclesPurchased: 1 }),
             largestFleetSize: Math.max(gameState.lifetimeStats.largestFleetSize, newFleet.length),
@@ -108,6 +115,13 @@ export function createVehicleActions(
             v.id === vehicleId ? { ...v, upgrades: { ...v.upgrades, [upgradeType]: nextTier } } : v,
           ),
           events: [...gameState.events, newEvent].slice(-50),
+          weeklyStats: {
+            ...gameState.weeklyStats,
+            expenseBreakdown: {
+              ...gameState.weeklyStats.expenseBreakdown,
+              'Upgrades': (gameState.weeklyStats.expenseBreakdown['Upgrades'] ?? 0) + cost,
+            },
+          },
           lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: cost }),
         },
       })
@@ -133,6 +147,13 @@ export function createVehicleActions(
             v.id === vehicleId ? { ...v, isImpounded: false, impoundFine: null, impoundExpiresOnTurn: null } : v,
           ),
           events: [...gameState.events, newEvent].slice(-50),
+          weeklyStats: {
+            ...gameState.weeklyStats,
+            expenseBreakdown: {
+              ...gameState.weeklyStats.expenseBreakdown,
+              'Impound fines': (gameState.weeklyStats.expenseBreakdown['Impound fines'] ?? 0) + vehicle.impoundFine,
+            },
+          },
           lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: vehicle.impoundFine }),
         },
       })

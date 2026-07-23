@@ -224,7 +224,6 @@ export function ContractModal({ contract: contractProp, onClose }: Props) {
   const destCity   = CITY_MAP.get(contract.destination)
 
   const isMultiLeg = contract.legs.length > 1
-  const isIndefinite = contract.isRecurring && contract.totalRuns >= 999
 
   // Skill requirement check
   const skillsLocked = contract.requiredSkills.some(s => !gameState.unlockedSkills.includes(s))
@@ -270,9 +269,6 @@ export function ContractModal({ contract: contractProp, onClose }: Props) {
                     MULTI-LEG
                   </span>
                 )}
-                {contract.isRecurring && (
-                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800">∞</span>
-                )}
               </div>
               <div className="text-xs font-mono text-gray-500 mt-0.5">{contract.cargoType}</div>
             </div>
@@ -288,7 +284,6 @@ export function ContractModal({ contract: contractProp, onClose }: Props) {
                 <div className="text-xs font-mono text-gray-500 mb-0.5">Payout</div>
                 <div className="text-sm font-mono font-bold text-emerald-400">
                   ${contract.payout.toLocaleString()}
-                  {contract.isRecurring ? '/run' : ''}
                 </div>
               </div>
               <div className="bg-gray-800 rounded-lg px-3 py-2">
@@ -307,8 +302,7 @@ export function ContractModal({ contract: contractProp, onClose }: Props) {
                   contract.deadline <= 2 ? 'text-yellow-400' : 'text-white'
                 }`}>
                   {contract.isAssigned
-                    ? isIndefinite ? '∞ recurring' : `${contract.runsCompleted}/${contract.totalRuns} runs`
-                    : isIndefinite ? '∞ recurring'
+                    ? `Active · Run ${contract.runsCompleted + 1}`
                     : `${contract.deadline}w left`}
                 </div>
               </div>
