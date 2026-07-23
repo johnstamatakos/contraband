@@ -239,7 +239,7 @@ export function MarketModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-6 px-4 bg-black/70"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-4 sm:pt-10 pb-6 px-2 sm:px-4 bg-black/70"
       onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="bg-gray-950 border border-gray-700 rounded-lg shadow-2xl w-full max-w-4xl flex flex-col max-h-[calc(100vh-5rem)] overflow-hidden">
@@ -260,8 +260,8 @@ export function MarketModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Cards grid */}
-        <div className="overflow-y-auto p-5">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="overflow-y-auto p-3 sm:p-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {commodities.map(([key, def]) => {
               const priceData = commodityPrices?.[key] ?? { index: 1.0, trend: 0.0 }
               const history   = commodityPriceHistory?.[key] ?? []
