@@ -235,9 +235,6 @@ export function MarketModal({ onClose }: { onClose: () => void }) {
             <div className="text-white font-mono font-bold text-sm uppercase tracking-widest">
               Commodity Markets
             </div>
-            <div className="text-gray-600 text-[11px] font-mono mt-0.5">
-              Prices fluctuate weekly · green = above base · red = below base · hover chart for weekly breakdown
-            </div>
           </div>
           <button
             onClick={onClose}
