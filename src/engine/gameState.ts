@@ -370,6 +370,8 @@ export interface GameState {
   lastCrackdownTurn: number
   // Cash at the end of the previous weekly tick (used for P&L expense tracking)
   cashAtPrevTickEnd: number
+  // Per-commodity market price multiplier { index: 0.35–2.80, trend: direction }
+  commodityPrices: Record<string, { index: number; trend: number }>
 }
 
 // ─── Derived values ────────────────────────────────────────────────────────────

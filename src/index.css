@@ -26,3 +26,9 @@ html, body, #root {
 ::-webkit-scrollbar-thumb:hover {
   background: #4b5563;
 }
+
+/* Market ticker scroll animation */
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}

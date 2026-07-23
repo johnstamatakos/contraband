@@ -5,6 +5,73 @@ import { CONFIG } from '../engine/config'
 import { getCityName } from '../data/cities'
 import { StatsModal } from './StatsModal'
 
+// ── Commodity market ticker ───────────────────────────────────────────────────
+
+const TICKER_SHORTS: Record<string, string> = {
+  narcotics:              'NARC',
+  counterfeit_electronics:'C-ELEC',
+  smuggled_currency:      'SMGD-$',
+  forged_documents:       'F-DOCS',
+  black_market_pharma:    'BLK-RX',
+  restricted_tech:        'R-TECH',
+  contraband_chemicals:   'CHEM',
+}
+
+function MarketTicker({ prices }: { prices: Record<string, { index: number; trend: number }> }) {
+  const commodities = Object.entries(CONFIG.smuggling.commodities)
+
+  const items = commodities.map(([key, def]) => {
+    const price = prices[key] ?? { index: 1.0, trend: 0.0 }
+    const idx = price.index
+    const pct = ((idx - 1.0) * 100)
+    const pctLabel = (pct >= 0 ? '+' : '') + pct.toFixed(0) + '%'
+    const currentBuy = Math.round(def.buyPrice * idx)
+    const isUp = price.trend > 0.005
+    const isDown = price.trend < -0.005
+
+    // Color the entry by price level: green=high (sell now), amber=low (buy opp), neutral=normal
+    let color = 'text-gray-400'
+    if (idx >= 1.50) color = 'text-emerald-400'
+    else if (idx >= 1.20) color = 'text-emerald-600'
+    else if (idx <= 0.65) color = 'text-amber-400'
+    else if (idx <= 0.85) color = 'text-amber-600'
+
+    const arrow = isUp ? '▲' : isDown ? '▼' : '—'
+    const arrowColor = isUp ? 'text-emerald-500' : isDown ? 'text-red-500' : 'text-gray-600'
+    const short = TICKER_SHORTS[key] ?? key.toUpperCase().slice(0, 6)
+
+    return (
+      <span key={key} className="inline-flex items-center gap-1.5 px-3">
+        <span className="text-gray-600">{def.icon}</span>
+        <span className="text-gray-500 font-semibold">{short}</span>
+        <span className={color}>${currentBuy}</span>
+        <span className={arrowColor + ' text-[10px]'}>{arrow}</span>
+        <span className={color + ' opacity-70'}>{pctLabel}</span>
+        <span className="text-gray-800 ml-1">·</span>
+      </span>
+    )
+  })
+
+  return (
+    <div className="border-t border-gray-800 bg-gray-950 overflow-hidden h-6 flex items-center relative select-none">
+      {/* Fade edges */}
+      <div className="absolute left-0 top-0 bottom-0 w-6 z-10 pointer-events-none"
+           style={{ background: 'linear-gradient(to right, #030712, transparent)' }} />
+      <div className="absolute right-0 top-0 bottom-0 w-6 z-10 pointer-events-none"
+           style={{ background: 'linear-gradient(to left, #030712, transparent)' }} />
+
+      <div
+        className="flex whitespace-nowrap text-[11px] font-mono"
+        style={{ animation: 'ticker-scroll 45s linear infinite' }}
+      >
+        {/* Duplicate for seamless loop */}
+        <span>{items}</span>
+        <span>{items}</span>
+      </div>
+    </div>
+  )
+}
+
 function Meter({
   label,
   value,
@@ -101,7 +168,7 @@ interface HUDProps {
 
 export function HUD({ displayTimeMs }: HUDProps) {
   const { gameState, netWorth, isPaused, togglePause, gameSpeed, cycleSpeed, payDownHeat } = useGameStore()
-  const { cash, reputation, globalHeat, turn, lastLayLowTurn } = gameState
+  const { cash, reputation, globalHeat, turn, lastLayLowTurn, commodityPrices } = gameState
   const nw = netWorth()
   const [showStats, setShowStats] = useState(false)
 
@@ -110,7 +177,8 @@ export function HUD({ displayTimeMs }: HUDProps) {
     turn - (lastLayLowTurn ?? 0) >= CONFIG.layLow.cooldownWeeks
 
   return (
-    <div className="flex items-center gap-6 px-6 py-3 bg-gray-900 border-b border-gray-700">
+    <div className="flex flex-col bg-gray-900 border-b border-gray-700">
+    <div className="flex items-center gap-6 px-6 py-3">
       {/* Clock */}
       <GameClock
         displayTimeMs={displayTimeMs}
@@ -222,6 +290,10 @@ export function HUD({ displayTimeMs }: HUDProps) {
 
       {/* Stats modal */}
       {showStats && <StatsModal onClose={() => setShowStats(false)} />}
+    </div>
+
+    {/* Market ticker strip */}
+    <MarketTicker prices={commodityPrices ?? {}} />
     </div>
   )
 }

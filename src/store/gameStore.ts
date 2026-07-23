@@ -95,6 +95,9 @@ function createInitialState(): GameState {
     lifetimeStats: { ...DEFAULT_LIFETIME_STATS },
     lastCrackdownTurn: -999,
     cashAtPrevTickEnd: CONFIG.start.cash,
+    commodityPrices: Object.fromEntries(
+      Object.keys(CONFIG.smuggling.commodities).map(k => [k, { index: 1.0, trend: 0.0 }]),
+    ),
   }
   return { ...base, contracts: generateContracts(base) }
 }

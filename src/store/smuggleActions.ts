@@ -30,7 +30,8 @@ export function createSmuggleActions(
       const commodity = available.find(c => c.key === commodityKey)
       if (!commodity) return
 
-      const totalCost = commodity.buyPrice * quantity
+      const marketIdx = gameState.commodityPrices?.[commodityKey]?.index ?? 1.0
+      const totalCost = Math.round(commodity.buyPrice * marketIdx) * quantity
       if (gameState.cash < totalCost) return
 
       const cityInv = { ...gameState.cityInventory }
@@ -105,9 +106,10 @@ export function createSmuggleActions(
         hops[0]!.shipmentIds.push(shipId)
       }
 
+      const launchMarketIdx = gameState.commodityPrices?.[commodityKey]?.index ?? 1.0
       const smuggleRun: SmuggleRun = {
         id: smuggleRunId, commodityKey, volume,
-        buyPricePerUnit: commodityDef.buyPrice, sellPricePerUnit,
+        buyPricePerUnit: Math.round(commodityDef.buyPrice * launchMarketIdx), sellPricePerUnit,
         expectedPayout: volume * sellPricePerUnit,
         sourceCity, destinationCity, hops, currentHopIndex: 0,
         vehicleIds, repReward, status: 'in_transit',

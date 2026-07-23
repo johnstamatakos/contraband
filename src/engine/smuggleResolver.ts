@@ -159,7 +159,11 @@ export function resolveSmuggleHopArrival(
       const premiumMult = state.unlockedSkills.includes('logistics_3')
         ? 1 + CONFIG.skills.effects.logistics_3.commodityPremiumBonus
         : 1.0
-      const payout = Math.round(run.volume * run.sellPricePerUnit * premiumMult)
+      // Use current market index at delivery time so timing deliveries matters
+      const marketIdx = state.commodityPrices?.[run.commodityKey]?.index ?? 1.0
+      const baseSellUnit = (commodityDef?.sellPrices as Record<string, number> | undefined)?.[run.destinationCity] ?? run.sellPricePerUnit
+      const currentSellUnit = Math.round(baseSellUnit * marketIdx)
+      const payout = Math.round(run.volume * currentSellUnit * premiumMult)
       deliveredPayout = payout
       newCash += payout
       newGlobalHeat = Math.min(100, newGlobalHeat + CONFIG.smuggling.heatOnSuccess.globalHeatGain)

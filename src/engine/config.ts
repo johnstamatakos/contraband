@@ -381,6 +381,14 @@ export const CONFIG = {
     },
   },
 
+  // ── Commodity market price fluctuation ──────────────────────────────────────
+  market: {
+    priceIndexMin:    0.35,   // extreme crash — great stockpile opportunity
+    priceIndexMax:    2.80,   // bubble peak — sell now for massive payout
+    weeklyVolatility: 0.14,   // random nudge magnitude applied each week
+    trendInertia:     0.60,   // how much last week's trend carries over (momentum)
+  },
+
   // ── UI ──────────────────────────────────────────────────────────────────────
   ui: {
     eventFeedCap:      50,  // max live events kept in state.events
