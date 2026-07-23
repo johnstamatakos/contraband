@@ -46,7 +46,7 @@ export function StatsModal({ onClose }: StatsModalProps) {
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-[480px] max-h-[85vh] overflow-y-auto"
+        className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-[760px] max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -55,7 +55,7 @@ export function StatsModal({ onClose }: StatsModalProps) {
           <button onClick={onClose} className="text-gray-600 hover:text-gray-400 text-lg font-mono">✕</button>
         </div>
 
-        <div className="px-5 py-4 space-y-5">
+        <div className="px-5 py-4 grid grid-cols-2 gap-x-8 gap-y-5">
 
           {/* Time & Status */}
           <div>
@@ -90,14 +90,6 @@ export function StatsModal({ onClose }: StatsModalProps) {
             )}
           </div>
 
-          {/* Legit Operations */}
-          <div>
-            <div className="text-xs font-mono font-semibold text-blue-400 uppercase tracking-wider mb-2">Supply Operations</div>
-            <StatRow label="Legit deliveries" value={stats.legitDeliveriesCompleted} />
-            <StatRow label="Largest contract payout" value={stats.largestContractPayout > 0 ? `$${stats.largestContractPayout.toLocaleString()}` : '—'} color="text-emerald-400" />
-            <StatRow label="Total legit cargo delivered" value={stats.totalLegitCargoDelivered} />
-          </div>
-
           {/* Fleet & Network */}
           <div>
             <div className="text-xs font-mono font-semibold text-gray-400 uppercase tracking-wider mb-2">Fleet & Network</div>
@@ -108,6 +100,14 @@ export function StatsModal({ onClose }: StatsModalProps) {
             <StatRow label="Routes established" value={stats.routesEstablished} />
             <StatRow label="Routes open" value={openRoutes} />
             <StatRow label="Skills unlocked" value={`${stats.skillsUnlocked} / 9`} />
+          </div>
+
+          {/* Legit Operations */}
+          <div>
+            <div className="text-xs font-mono font-semibold text-blue-400 uppercase tracking-wider mb-2">Supply Operations</div>
+            <StatRow label="Legit deliveries" value={stats.legitDeliveriesCompleted} />
+            <StatRow label="Largest contract payout" value={stats.largestContractPayout > 0 ? `$${stats.largestContractPayout.toLocaleString()}` : '—'} color="text-emerald-400" />
+            <StatRow label="Total legit cargo delivered" value={stats.totalLegitCargoDelivered} />
           </div>
 
           {/* Trouble */}
