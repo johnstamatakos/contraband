@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useId } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { CONFIG } from '../engine/config'
 
@@ -7,13 +7,13 @@ import { CONFIG } from '../engine/config'
 function PriceChart({
   history,
   basePrice,
-  currentIdx,
 }: {
   history: number[]
   basePrice: number
   currentIdx: number
 }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+  const uid = useId()
 
   const W = 320, H = 72
   const padL = 4, padR = 4, padT = 8, padB = 8
@@ -46,9 +46,11 @@ function PriceChart({
     `L ${weeks.map((v, i) => `${getX(i).toFixed(1)},${getY(v).toFixed(1)}`).join(' L ')} ` +
     `L ${getX(n - 1).toFixed(1)},${baselineY.toFixed(1)} Z`
 
-  const isAbove = currentIdx >= 1.0
-  const lineCol  = isAbove ? '#34d399' : '#f87171'
-  const fillCol  = isAbove ? '#34d399' : '#f87171'
+  // Clip paths split at baseline so green = above 1.0, red = below 1.0 per segment
+  const aboveId = `${uid}-above`
+  const belowId = `${uid}-below`
+  const aboveH = Math.max(0, baselineY - padT)
+  const belowH = Math.max(0, H - padB - baselineY)
 
   const hv = hoveredIdx !== null ? weeks[hoveredIdx]! : null
 
@@ -58,34 +60,47 @@ function PriceChart({
       style={{ width: '100%', height: H, display: 'block' }}
       onMouseLeave={() => setHoveredIdx(null)}
     >
+      <defs>
+        <clipPath id={aboveId}>
+          <rect x={padL - 2} y={padT} width={chartW + 4} height={aboveH} />
+        </clipPath>
+        <clipPath id={belowId}>
+          <rect x={padL - 2} y={baselineY} width={chartW + 4} height={belowH} />
+        </clipPath>
+      </defs>
+
       {/* Baseline at index 1.0 */}
       <line x1={padL} y1={baselineY} x2={W - padR} y2={baselineY}
         stroke="#374151" strokeWidth="0.8" strokeDasharray="3,2" />
 
-      {/* Area fill */}
-      <path d={areaPath} fill={fillCol} opacity="0.12" />
+      {/* Area fills — green above baseline, red below */}
+      <path d={areaPath} fill="#34d399" opacity="0.12" clipPath={`url(#${aboveId})`} />
+      <path d={areaPath} fill="#f87171" opacity="0.12" clipPath={`url(#${belowId})`} />
 
-      {/* Price line */}
-      <path d={linePath} fill="none" stroke={lineCol} strokeWidth="1.5" strokeLinejoin="round" />
+      {/* Price line — green above baseline, red below */}
+      <path d={linePath} fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinejoin="round" clipPath={`url(#${aboveId})`} />
+      <path d={linePath} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinejoin="round" clipPath={`url(#${belowId})`} />
 
-      {/* Week dots (invisible hit zones + visible dots) */}
-      {weeks.map((v, i) => (
-        <g key={i}>
-          {/* Large transparent hit zone */}
-          <circle cx={getX(i)} cy={getY(v)} r="8"
-            fill="transparent"
-            onMouseEnter={() => setHoveredIdx(i)} />
-          {/* Visible dot */}
-          <circle cx={getX(i)} cy={getY(v)} r={hoveredIdx === i ? 3.5 : 2}
-            fill={lineCol}
-            style={{ pointerEvents: 'none' }} />
-        </g>
-      ))}
+      {/* Week dots — colored per their own value */}
+      {weeks.map((v, i) => {
+        const dotCol = v >= 1.0 ? '#34d399' : '#f87171'
+        return (
+          <g key={i}>
+            <circle cx={getX(i)} cy={getY(v)} r="8"
+              fill="transparent"
+              onMouseEnter={() => setHoveredIdx(i)} />
+            <circle cx={getX(i)} cy={getY(v)} r={hoveredIdx === i ? 3.5 : 2}
+              fill={dotCol}
+              style={{ pointerEvents: 'none' }} />
+          </g>
+        )
+      })}
 
       {/* Hover crosshair + tooltip */}
       {hoveredIdx !== null && hv !== null && (() => {
         const x = getX(hoveredIdx)
         const y = getY(hv)
+        const tipCol = hv >= 1.0 ? '#34d399' : '#f87171'
         const buyPx = Math.round(basePrice * hv)
         const pct = (hv - 1.0) * 100
         const label = `$${buyPx}  ${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`
@@ -101,7 +116,7 @@ function PriceChart({
               fill="#030712" stroke="#374151" strokeWidth="0.5"
               style={{ pointerEvents: 'none' }} />
             <text x={tipX + 4} y={tipY + 11}
-              fontSize="9" fill={lineCol} fontFamily="ui-monospace,monospace"
+              fontSize="9" fill={tipCol} fontFamily="ui-monospace,monospace"
               style={{ pointerEvents: 'none' }}>
               {label}
             </text>
