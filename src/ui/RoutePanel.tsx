@@ -136,8 +136,12 @@ export function RoutePanel({ cityId, onClose }: RoutePanelProps) {
                   </div>
                   {purchases.map(c => {
                     const qty = purchaseQtys[c.key] ?? 10
-                    const totalCost = c.buyPrice * qty
+                    const marketIdx = gameState.commodityPrices?.[c.key]?.index ?? 1.0
+                    const currentPrice = Math.round(c.buyPrice * marketIdx)
+                    const totalCost = currentPrice * qty
                     const canAfford = gameState.cash >= totalCost
+                    const priceIsUp = marketIdx > 1.05
+                    const priceIsDown = marketIdx < 0.95
 
                     return (
                       <div key={c.key} className="bg-gray-800/60 rounded-lg p-2 space-y-1.5">
@@ -145,8 +149,8 @@ export function RoutePanel({ cityId, onClose }: RoutePanelProps) {
                           <span className="text-sm font-mono text-gray-200">
                             {c.icon} {c.displayName}
                           </span>
-                          <span className="text-xs font-mono text-gray-500">
-                            ${c.buyPrice}/unit
+                          <span className={`text-xs font-mono ${priceIsUp ? 'text-emerald-400' : priceIsDown ? 'text-red-400' : 'text-gray-500'}`}>
+                            ${currentPrice}/unit
                           </span>
                         </div>
 
