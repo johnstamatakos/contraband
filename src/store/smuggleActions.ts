@@ -121,6 +121,7 @@ export function createSmuggleActions(
         sourceCity, destinationCity, hops, currentHopIndex: 0,
         vehicleIds, repReward, status: 'in_transit',
         createdAtTurn: gameState.turn, completedAtTurn: null,
+        deliveredPayout: null, actualRepGained: null,
       }
 
       const updatedCityInv = { ...gameState.cityInventory }

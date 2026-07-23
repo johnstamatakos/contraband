@@ -5,6 +5,7 @@ import { CONFIG } from '../engine/config'
 import { getCityName } from '../data/cities'
 import { StatsModal } from './StatsModal'
 import { MarketModal } from './MarketModal'
+import { LedgerModal } from './LedgerModal'
 
 // ── Commodity market ticker ───────────────────────────────────────────────────
 
@@ -178,6 +179,7 @@ export function HUD({ displayTimeMs }: HUDProps) {
   const nw = netWorth()
   const [showStats, setShowStats] = useState(false)
   const [showMarket, setShowMarket] = useState(false)
+  const [showLedger, setShowLedger] = useState(false)
 
   const layLowCost = CONFIG.layLow.cost
   const canLayLow = cash >= layLowCost && globalHeat > 0 &&
@@ -265,6 +267,12 @@ export function HUD({ displayTimeMs }: HUDProps) {
         >
           Stats
         </button>
+        <button
+          onClick={() => setShowLedger(true)}
+          className="text-xs font-mono px-2.5 py-1 rounded border bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 border-gray-700 transition-colors"
+        >
+          Ledger
+        </button>
       </div>
 
       {/* Commodity Inventory */}
@@ -304,6 +312,7 @@ export function HUD({ displayTimeMs }: HUDProps) {
       {/* Modals */}
       {showMarket && <MarketModal onClose={() => setShowMarket(false)} />}
       {showStats && <StatsModal onClose={() => setShowStats(false)} />}
+      {showLedger && <LedgerModal onClose={() => setShowLedger(false)} />}
     </div>
 
     {/* Market ticker strip */}

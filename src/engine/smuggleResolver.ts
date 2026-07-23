@@ -178,7 +178,9 @@ export function resolveSmuggleHopArrival(
 
       updatedRuns = updatedRuns.map(r =>
         r.id === run.id
-          ? { ...r, status: 'completed' as const, completedAtTurn: state.turn, hops: r.hops.map((h, i) => i === run.currentHopIndex ? { ...h, status: 'cleared' as const } : h) }
+          ? { ...r, status: 'completed' as const, completedAtTurn: state.turn,
+              deliveredPayout: payout, actualRepGained: actualRepReward,
+              hops: r.hops.map((h, i) => i === run.currentHopIndex ? { ...h, status: 'cleared' as const } : h) }
           : r,
       )
 

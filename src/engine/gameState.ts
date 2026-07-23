@@ -278,6 +278,8 @@ export interface SmuggleRun {
   status: 'in_transit' | 'completed' | 'busted'
   createdAtTurn: number
   completedAtTurn: number | null
+  deliveredPayout: number | null  // actual market-adjusted revenue; null until delivery
+  actualRepGained: number | null  // actual rep awarded (market-scaled); null until delivery
 }
 
 // ─── Lifetime stats (persisted across weeks, never reset) ───────────────────
