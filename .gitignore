@@ -17,3 +17,7 @@ dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Capacitor native platform artifacts (regenerated via npx cap add ios/android)
+ios/
+android/
