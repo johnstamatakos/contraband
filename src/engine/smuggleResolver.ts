@@ -256,6 +256,7 @@ export function resolveSmuggleHopArrival(
       repFromDeliveries: ws.repFromDeliveries + (newReputation - state.reputation),
       heatFromDeliveries: ws.heatFromDeliveries + (newGlobalHeat - state.globalHeat),
       deliveries: (isLastHop || caught) ? [...ws.deliveries, record] : ws.deliveries,
+      expenseBreakdown: ws.expenseBreakdown,
     },
   }
 

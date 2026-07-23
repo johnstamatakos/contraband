@@ -229,6 +229,7 @@ export function resolveArrival(
     repFromDeliveries:  ws.repFromDeliveries + (newReputation - state.reputation),
     heatFromDeliveries: ws.heatFromDeliveries + (newGlobalHeat - state.globalHeat),
     deliveries:         isLastLeg ? [...ws.deliveries, record] : ws.deliveries,
+    expenseBreakdown:   ws.expenseBreakdown,
   }
 
   // ── Remove the completed shipment from the leg's shipmentIds ─────────────────
