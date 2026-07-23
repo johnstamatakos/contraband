@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useId } from 'react'
 import { useGameStore } from '../store/gameStore'
 import type { DeliveryRecord, CrackdownRaidResult } from '../engine/gameState'
 import { formatWeekDate } from '../utils/gameTime'
@@ -8,6 +8,7 @@ import { DetectionBadge } from './DetectionBadge'
 
 function ProfitChart({ history }: { history: number[] }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+  const uid = useId()
 
   const weeks = history.slice(-10)
   if (weeks.length < 2) {
@@ -28,27 +29,29 @@ function ProfitChart({ history }: { history: number[] }) {
   const maxVal = Math.max(...weeks, 0)
   const range = maxVal - minVal || 1
 
-  const zeroY = padT + ((maxVal) / range) * chartH
+  const zeroY = padT + (maxVal / range) * chartH
 
   const getX = (i: number) => padL + (i / (n - 1)) * chartW
   const getY = (v: number) => padT + ((maxVal - v) / range) * chartH
 
   const total = weeks.reduce((a, b) => a + b, 0)
 
-  // Build SVG path
   const points = weeks.map((v, i) => `${getX(i).toFixed(1)},${getY(v).toFixed(1)}`)
   const linePath = `M ${points.join(' L ')}`
-
-  // Area fill path (close back to zero line)
   const areaPoints = weeks.map((v, i) => `${getX(i).toFixed(1)},${getY(v).toFixed(1)}`).join(' L ')
   const areaPath = `M ${getX(0).toFixed(1)},${zeroY.toFixed(1)} L ${areaPoints} L ${getX(n-1).toFixed(1)},${zeroY.toFixed(1)} Z`
+
+  // Clip paths split at zero so green = positive, red = negative per segment
+  const aboveId = `${uid}-above`
+  const belowId = `${uid}-below`
+  const aboveH = Math.max(0, zeroY - padT)
+  const belowH = Math.max(0, H - padB - zeroY)
 
   const hIdx = hoveredIdx
   const hv = hIdx !== null ? weeks[hIdx]! : 0
   const weekNum = hIdx !== null ? history.length - weeks.length + hIdx + 1 : 0
 
-  // Y axis labels
-  const yLabels = []
+  const yLabels: { v: number; y: number }[] = []
   if (maxVal > 0) yLabels.push({ v: maxVal, y: getY(maxVal) })
   if (minVal < 0) yLabels.push({ v: minVal, y: getY(minVal) })
   yLabels.push({ v: 0, y: zeroY })
@@ -64,6 +67,15 @@ function ProfitChart({ history }: { history: number[] }) {
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H }}
         onMouseLeave={() => setHoveredIdx(null)}>
 
+        <defs>
+          <clipPath id={aboveId}>
+            <rect x={padL - 2} y={padT} width={chartW + 4} height={aboveH} />
+          </clipPath>
+          <clipPath id={belowId}>
+            <rect x={padL - 2} y={zeroY} width={chartW + 4} height={belowH} />
+          </clipPath>
+        </defs>
+
         {/* Y axis labels */}
         {yLabels.map(({ v, y }) => (
           <text key={v} x={padL - 4} y={y + 3.5}
@@ -77,13 +89,15 @@ function ProfitChart({ history }: { history: number[] }) {
         <line x1={padL} y1={zeroY} x2={W - padR} y2={zeroY}
           stroke="#374151" strokeWidth="1" strokeDasharray="3,3" />
 
-        {/* Area fill */}
-        <path d={areaPath} fill="#10b981" opacity="0.08" />
+        {/* Area fills — green above zero, red below */}
+        <path d={areaPath} fill="#10b981" opacity="0.10" clipPath={`url(#${aboveId})`} />
+        <path d={areaPath} fill="#ef4444" opacity="0.10" clipPath={`url(#${belowId})`} />
 
-        {/* Line */}
-        <path d={linePath} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinejoin="round" />
+        {/* Lines — green above zero, red below */}
+        <path d={linePath} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinejoin="round" clipPath={`url(#${aboveId})`} />
+        <path d={linePath} fill="none" stroke="#ef4444" strokeWidth="1.5" strokeLinejoin="round" clipPath={`url(#${belowId})`} />
 
-        {/* Data points */}
+        {/* Data points — colored per their own value */}
         {weeks.map((v, i) => {
           const x = getX(i)
           const y = getY(v)
@@ -91,9 +105,7 @@ function ProfitChart({ history }: { history: number[] }) {
           const wNum = history.length - weeks.length + i + 1
           return (
             <g key={i} onMouseEnter={() => setHoveredIdx(i)} style={{ cursor: 'default' }}>
-              {/* Invisible hover target */}
               <rect x={x - 12} y={padT} width={24} height={chartH} fill="transparent" />
-              {/* Vertical hover line */}
               {isHov && (
                 <line x1={x} y1={padT} x2={x} y2={padT + chartH}
                   stroke="#374151" strokeWidth="1" strokeDasharray="2,2" />
@@ -101,7 +113,6 @@ function ProfitChart({ history }: { history: number[] }) {
               <circle cx={x} cy={y} r={isHov ? 5 : 3}
                 fill={v >= 0 ? '#10b981' : '#ef4444'}
                 stroke={isHov ? '#fff' : 'none'} strokeWidth="1.5" />
-              {/* Week label on x axis */}
               <text x={x} y={H - 4}
                 textAnchor="middle" fontSize="7.5"
                 fill={isHov ? '#d1d5db' : '#4b5563'}
@@ -115,6 +126,7 @@ function ProfitChart({ history }: { history: number[] }) {
         {/* Hover tooltip */}
         {hIdx !== null && (() => {
           const x = getX(hIdx)
+          const tipCol = hv >= 0 ? '#10b981' : '#ef4444'
           const label = `Wk ${weekNum}: ${hv >= 0 ? '+' : ''}$${Math.abs(hv).toLocaleString()}`
           const tw = label.length * 7.2 + 16
           const tx = Math.min(Math.max(x - tw / 2, padL), W - padR - tw)
@@ -123,7 +135,7 @@ function ProfitChart({ history }: { history: number[] }) {
               <rect x={tx} y={4} width={tw} height={18}
                 rx="3" fill="#1f2937" stroke="#374151" strokeWidth="0.75" />
               <text x={tx + tw / 2} y={16}
-                textAnchor="middle" fontSize="11" fill="#f9fafb"
+                textAnchor="middle" fontSize="11" fill={tipCol}
                 fontFamily="ui-monospace,monospace" fontWeight="600">
                 {label}
               </text>
