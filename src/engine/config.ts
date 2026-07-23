@@ -86,7 +86,8 @@ export const CONFIG = {
 
   // ── Lay Low (manual heat reduction) ──────────────────────────────────────────
   layLow: {
-    cost:           5_000,  // cash cost per use
+    baseCost:       1_500,  // cash cost at rep 0; doubles every repScaleInterval rep
+    repScaleInterval: 25,   // rep points per cost doubling (cost = baseCost × 2^(rep/interval))
     heatReduction:  15,     // globalHeat reduced
     cooldownWeeks:  2,      // minimum weeks between uses
   },
