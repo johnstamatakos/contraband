@@ -181,7 +181,7 @@ export function HUD({ displayTimeMs }: HUDProps) {
   const [showMarket, setShowMarket] = useState(false)
   const [showLedger, setShowLedger] = useState(false)
 
-  const layLowCost = Math.round(CONFIG.layLow.baseCost * Math.pow(2, reputation / CONFIG.layLow.repScaleInterval))
+  const layLowCost = CONFIG.layLow.costTiers.find(t => reputation >= t.minRep)!.cost
   const canLayLow = cash >= layLowCost && globalHeat > 0 &&
     turn - (lastLayLowTurn ?? 0) >= CONFIG.layLow.cooldownWeeks
 

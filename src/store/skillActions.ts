@@ -11,8 +11,8 @@ export function createSkillActions(
   return {
     payDownHeat: () => {
       const { gameState } = get()
-      const { baseCost, repScaleInterval, heatReduction, cooldownWeeks } = CONFIG.layLow
-      const cost = Math.round(baseCost * Math.pow(2, gameState.reputation / repScaleInterval))
+      const { costTiers, heatReduction, cooldownWeeks } = CONFIG.layLow
+      const cost = costTiers.find(t => gameState.reputation >= t.minRep)!.cost
       if (gameState.cash < cost) return
       if (gameState.globalHeat <= 0) return
       if (gameState.turn - (gameState.lastLayLowTurn ?? 0) < cooldownWeeks) return
