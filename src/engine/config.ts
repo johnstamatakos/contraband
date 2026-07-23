@@ -160,7 +160,7 @@ export const CONFIG = {
   detection: {
     baseChance:              0.12,  // flat base probability — high enough that upgrades reduce but never eliminate risk
     perRouteHeat:            0.08,  // added per route-heat point (scale 0–5)
-    perGlobalHeatPoint:      0.002, // added per global-heat point (scale 0–100)
+    perGlobalHeatPoint:      0.005, // added per global-heat point (scale 0–100)
     perConsecutiveRun:       0.04,  // added per consecutive illicit run on this route
     maxConsecutiveRuns:      5,     // consecutive-run bonus caps here
     minProbability:          0.03,  // hard floor — running contraband is never truly safe
@@ -179,18 +179,18 @@ export const CONFIG = {
   economy: {
     // Inspector bust consequences (domestic / regional routes)
     bustRepLoss:        8,
-    bustGlobalHeatGain: 10,
+    bustGlobalHeatGain: 15,
     bustRouteHeatGain:  3,   // +3 heat per bust; decays back in ~3 weeks
     bustFlaggedWeeks:   4,   // 4-week lockout outlasts most contract deadlines
 
     // Interpol bust consequences (international / long_haul routes) — much harsher
     interpolBustRepLoss:        15,
-    interpolBustGlobalHeatGain: 22,
+    interpolBustGlobalHeatGain: 30,
     interpolBustRouteHeatGain:  4,   // +4 heat per bust
     interpolBustFlaggedWeeks:   6,   // 6-week lockout on international routes
 
     // Successful illicit delivery
-    successGlobalHeatGain: 5,
+    successGlobalHeatGain: 8,
 
     // Weekly decay
     globalHeatDecayPerWeek:    2,   // globalHeat reduced by this each weekly tick
@@ -382,7 +382,7 @@ export const CONFIG = {
 
     // Heat consequences on successful smuggle delivery
     heatOnSuccess: {
-      globalHeatGain: 5,          // global heat added on final-hop delivery
+      globalHeatGain: 8,          // global heat added on final-hop delivery
       routeHeatGain: 1,           // route heat added per route segment used
     },
   },
