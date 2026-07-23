@@ -372,6 +372,8 @@ export interface GameState {
   cashAtPrevTickEnd: number
   // Per-commodity market price multiplier { index: 0.35–2.80, trend: direction }
   commodityPrices: Record<string, { index: number; trend: number }>
+  // Rolling 10-week price index history per commodity (for market chart)
+  commodityPriceHistory: Record<string, number[]>
 }
 
 // ─── Derived values ────────────────────────────────────────────────────────────

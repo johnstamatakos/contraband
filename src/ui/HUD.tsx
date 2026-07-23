@@ -4,6 +4,7 @@ import { GameClock } from './GameClock'
 import { CONFIG } from '../engine/config'
 import { getCityName } from '../data/cities'
 import { StatsModal } from './StatsModal'
+import { MarketModal } from './MarketModal'
 
 // ── Commodity market ticker ───────────────────────────────────────────────────
 
@@ -176,6 +177,7 @@ export function HUD({ displayTimeMs }: HUDProps) {
   const { cash, reputation, globalHeat, turn, lastLayLowTurn, commodityPrices } = gameState
   const nw = netWorth()
   const [showStats, setShowStats] = useState(false)
+  const [showMarket, setShowMarket] = useState(false)
 
   const layLowCost = CONFIG.layLow.cost
   const canLayLow = cash >= layLowCost && globalHeat > 0 &&
@@ -252,6 +254,12 @@ export function HUD({ displayTimeMs }: HUDProps) {
           </div>
         </div>
         <button
+          onClick={() => setShowMarket(true)}
+          className="text-xs font-mono px-2.5 py-1 rounded border bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 border-gray-700 transition-colors"
+        >
+          Market
+        </button>
+        <button
           onClick={() => setShowStats(true)}
           className="text-xs font-mono px-2.5 py-1 rounded border bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 border-gray-700 transition-colors"
         >
@@ -293,7 +301,8 @@ export function HUD({ displayTimeMs }: HUDProps) {
         </div>
       </div>
 
-      {/* Stats modal */}
+      {/* Modals */}
+      {showMarket && <MarketModal onClose={() => setShowMarket(false)} />}
       {showStats && <StatsModal onClose={() => setShowStats(false)} />}
     </div>
 

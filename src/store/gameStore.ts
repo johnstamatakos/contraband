@@ -98,6 +98,7 @@ function createInitialState(): GameState {
     commodityPrices: Object.fromEntries(
       Object.keys(CONFIG.smuggling.commodities).map(k => [k, { index: 1.0, trend: 0.0 }]),
     ),
+    commodityPriceHistory: {},
   }
   return { ...base, contracts: generateContracts(base) }
 }

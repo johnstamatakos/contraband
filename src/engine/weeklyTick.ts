@@ -15,6 +15,7 @@ import { WEEK_MS } from '../utils/time'
 function stepFluctuatePrices(state: GameState): StepResult {
   const m = CONFIG.market
   const newPrices: GameState['commodityPrices'] = {}
+  const newHistory: GameState['commodityPriceHistory'] = {}
   for (const key of Object.keys(CONFIG.smuggling.commodities)) {
     const cur = state.commodityPrices?.[key] ?? { index: 1.0, trend: 0.0 }
     // Random nudge with trend momentum
@@ -22,8 +23,11 @@ function stepFluctuatePrices(state: GameState): StepResult {
     const trend = cur.trend * m.trendInertia + nudge * (1 - m.trendInertia)
     const index = Math.max(m.priceIndexMin, Math.min(m.priceIndexMax, cur.index + trend))
     newPrices[key] = { index, trend }
+    // Append to rolling 10-week history
+    const prev = state.commodityPriceHistory?.[key] ?? []
+    newHistory[key] = [...prev, index].slice(-10)
   }
-  return { state: { ...state, commodityPrices: newPrices }, events: [] }
+  return { state: { ...state, commodityPrices: newPrices, commodityPriceHistory: newHistory }, events: [] }
 }
 
 // ── Step 1: Forecast ──────────────────────────────────────────────────────────
