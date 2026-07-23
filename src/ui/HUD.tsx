@@ -236,7 +236,7 @@ export function HUD({ displayTimeMs }: HUDProps) {
       </div>
 
       {/* Actions */}
-      <div className="flex flex-col gap-1.5 shrink-0">
+      <div className="grid grid-cols-2 gap-1.5 shrink-0">
         <div className="relative group">
           <button
             onClick={payDownHeat}
