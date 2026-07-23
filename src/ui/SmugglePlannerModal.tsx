@@ -223,9 +223,11 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
 
   const survivalProb = hopData.reduce((acc, h) => acc * (1 - h.prob), 1)
 
-  const repReward = hopData.length > 0
+  const baseRepReward = hopData.length > 0
     ? computeRepReward(hopData.map(h => ({ routeTier: h.route.tier })), effectiveVolume)
     : 0
+  const marketIdx = gameState.commodityPrices?.[selectedCommodity]?.index ?? 1.0
+  const repReward = Math.max(1, Math.round(baseRepReward * marketIdx))
 
   const canLaunch = isRouteComplete && selectedVehicleIds.length > 0 && effectiveVolume > 0
 
@@ -430,7 +432,14 @@ export function SmugglePlannerModal({ cityId, onClose }: SmugglePlannerModalProp
                 </div>
                 <div className="flex justify-between text-xs font-mono">
                   <span className="text-gray-400">Rep</span>
-                  <span className="text-blue-400">+{repReward}</span>
+                  <span className="flex items-center gap-1">
+                    <span className="text-blue-400">+{repReward}</span>
+                    {Math.abs(marketIdx - 1.0) > 0.05 && (
+                      <span className={`text-[10px] ${marketIdx >= 1.0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {marketIdx >= 1.0 ? '▲' : '▼'} {marketIdx.toFixed(1)}×
+                      </span>
+                    )}
+                  </span>
                 </div>
               </div>
             ) : (

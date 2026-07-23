@@ -167,7 +167,9 @@ export function resolveSmuggleHopArrival(
       deliveredPayout = payout
       newCash += payout
       newGlobalHeat = Math.min(100, newGlobalHeat + CONFIG.smuggling.heatOnSuccess.globalHeatGain)
-      newReputation = Math.min(100, newReputation + run.repReward)
+      // Scale rep by market demand at delivery time: high demand = more rep, low demand = less
+      const actualRepReward = Math.max(1, Math.round(run.repReward * marketIdx))
+      newReputation = Math.min(100, newReputation + actualRepReward)
 
       for (const vId of run.vehicleIds) {
         const vi = updatedFleet.findIndex(v => v.id === vId)
@@ -181,8 +183,9 @@ export function resolveSmuggleHopArrival(
       )
 
       const profit = payout - (run.volume * run.buyPricePerUnit)
+      const demandNote = marketIdx >= 1.05 ? ` (high demand ×${marketIdx.toFixed(1)})` : marketIdx <= 0.95 ? ` (low demand ×${marketIdx.toFixed(1)})` : ''
       events.push(makeEvent(gameTimeMs,
-        `Smuggling complete: ${run.volume} ${commodityName} delivered to ${getCityName(hop.destination)}. +$${payout.toLocaleString()} (profit $${profit.toLocaleString()}), +${run.repReward} rep. (${Math.round(prob * 100)}% risk)`,
+        `Smuggling complete: ${run.volume} ${commodityName} delivered to ${getCityName(hop.destination)}. +$${payout.toLocaleString()} (profit $${profit.toLocaleString()}), +${actualRepReward} rep${demandNote}. (${Math.round(prob * 100)}% risk)`,
         'success'))
     } else {
       // Intermediate hop — dispatch next hop
