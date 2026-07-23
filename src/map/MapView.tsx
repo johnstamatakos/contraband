@@ -205,6 +205,53 @@ export function MapView({ gameTimeMsRef }: MapViewProps) {
     return () => el.removeEventListener('wheel', onWheel)
   }, [redraw])
 
+  // ── Pinch-zoom (touch) ────────────────────────────────────────────────────
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    let lastDist: number | null = null
+
+    const getTouchDist = (e: TouchEvent) =>
+      Math.hypot(
+        e.touches[0]!.clientX - e.touches[1]!.clientX,
+        e.touches[0]!.clientY - e.touches[1]!.clientY,
+      )
+
+    const getTouchMid = (e: TouchEvent, rect: DOMRect) => ({
+      x: ((e.touches[0]!.clientX + e.touches[1]!.clientX) / 2) - rect.left,
+      y: ((e.touches[0]!.clientY + e.touches[1]!.clientY) / 2) - rect.top,
+    })
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) lastDist = getTouchDist(e)
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || lastDist === null) return
+      e.preventDefault()
+      const dist = getTouchDist(e)
+      const factor = dist / lastDist
+      lastDist = dist
+      const rect = el.getBoundingClientRect()
+      const { x, y } = getTouchMid(e, rect)
+      const newVp = zoomViewport(viewportRef.current, factor, x, y, el.clientWidth, el.clientHeight)
+      viewportRef.current = newVp
+      redraw(newVp)
+    }
+
+    const onTouchEnd = () => { lastDist = null }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd)
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [redraw])
+
   // ── Pan (mouse drag) ───────────────────────────────────────────────────────
   useEffect(() => {
     const el = containerRef.current
@@ -267,7 +314,7 @@ export function MapView({ gameTimeMsRef }: MapViewProps) {
   return (
     <div
       ref={containerRef}
-      className="relative flex-1 overflow-hidden select-none"
+      className="relative flex-1 overflow-hidden select-none touch-none"
       style={{ background: '#030712', cursor: 'default' }}
     >
       {/* World background (Canvas2D, D3 geoPath) */}
@@ -282,14 +329,14 @@ export function MapView({ gameTimeMsRef }: MapViewProps) {
         <button
           onClick={() => zoomBy(1.25)}
           title="Zoom in"
-          className="w-7 h-7 flex items-center justify-center rounded text-sm font-mono border bg-gray-950 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+          className="w-11 h-11 flex items-center justify-center rounded text-sm font-mono border bg-gray-950 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
         >
           +
         </button>
         <button
           onClick={() => zoomBy(1 / 1.25)}
           title="Zoom out"
-          className="w-7 h-7 flex items-center justify-center rounded text-sm font-mono border bg-gray-950 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+          className="w-11 h-11 flex items-center justify-center rounded text-sm font-mono border bg-gray-950 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
         >
           −
         </button>

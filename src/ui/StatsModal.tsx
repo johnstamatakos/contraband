@@ -46,7 +46,7 @@ export function StatsModal({ onClose }: StatsModalProps) {
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-[760px] max-h-[85vh] overflow-y-auto"
+        className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-full max-w-[760px] mx-4 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

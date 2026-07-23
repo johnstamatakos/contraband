@@ -9,7 +9,9 @@ import { StartScreen } from './ui/StartScreen'
 import { MapView } from './map/MapView'
 import { EventFeed } from './ui/EventFeed'
 import { ThreatAlertModal } from './ui/ThreatAlertModal'
+import { MobileNav } from './ui/MobileNav'
 import { useGameClock } from './hooks/useGameClock'
+import { useIsMobile } from './hooks/useIsMobile'
 import { useState } from 'react'
 
 function NewGameButton() {
@@ -31,46 +33,49 @@ export function App() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('contracts')
   const { gameTimeMsRef, displayTimeMs } = useGameClock()
   const hasImpoundedVehicles = useGameStore(s => s.gameState.fleet.some(v => v.isImpounded))
+  const { newGame } = useGameStore()
+  const isMobile = useIsMobile()
 
   return (
-    <div className="h-screen overflow-hidden bg-gray-950 text-white flex flex-col">
+    <div className={`h-screen overflow-hidden bg-gray-950 text-white flex flex-col ${isMobile ? 'pb-14' : ''}`}>
       {/* Top HUD */}
-      <HUD displayTimeMs={displayTimeMs} />
+      <HUD displayTimeMs={displayTimeMs} isMobile={isMobile} />
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar: Contracts / Fleet / Skills tabs */}
-        <div className="w-96 shrink-0 border-r border-gray-700 flex flex-col bg-gray-900">
-          {/* Tab bar */}
-          <div className="flex border-b border-gray-700">
-            {(['contracts', 'fleet', 'skills'] as SidebarTab[]).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setSidebarTab(tab)}
-                className={`relative flex-1 text-xs font-mono uppercase tracking-wider py-2.5 transition-colors ${
-                  sidebarTab === tab
-                    ? 'bg-gray-800 text-white border-b-2 border-amber-500'
-                    : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                {tab}
-                {tab === 'fleet' && hasImpoundedVehicles && (
-                  <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                )}
-              </button>
-            ))}
-          </div>
+        {/* Left sidebar — desktop only */}
+        {!isMobile && (
+          <div className="w-96 shrink-0 border-r border-gray-700 flex flex-col bg-gray-900">
+            <div className="flex border-b border-gray-700">
+              {(['contracts', 'fleet', 'skills'] as SidebarTab[]).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setSidebarTab(tab)}
+                  className={`relative flex-1 text-xs font-mono uppercase tracking-wider py-2.5 transition-colors ${
+                    sidebarTab === tab
+                      ? 'bg-gray-800 text-white border-b-2 border-amber-500'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  {tab}
+                  {tab === 'fleet' && hasImpoundedVehicles && (
+                    <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  )}
+                </button>
+              ))}
+            </div>
 
-          <div className="flex-1 overflow-hidden flex flex-col">
-            {sidebarTab === 'contracts' ? <ContractBoard />
-              : sidebarTab === 'fleet' ? <FleetPanel />
-              : <SkillsPanel />}
-          </div>
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {sidebarTab === 'contracts' ? <ContractBoard />
+                : sidebarTab === 'fleet' ? <FleetPanel />
+                : <SkillsPanel />}
+            </div>
 
-          <div className="p-3 border-t border-gray-700">
-            <NewGameButton />
+            <div className="p-3 border-t border-gray-700">
+              <NewGameButton />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Main area: Pixi.js map + event feed overlay */}
         <div className="relative flex-1 overflow-hidden flex">
@@ -78,6 +83,9 @@ export function App() {
           <EventFeed currentTimeMs={displayTimeMs} />
         </div>
       </div>
+
+      {/* Mobile bottom nav + sheet */}
+      {isMobile && <MobileNav onNewGame={newGame} />}
 
       {/* Weekly report (pauses game while open) */}
       <WeeklyReport />
@@ -90,7 +98,6 @@ export function App() {
 
       {/* Start screen (shown before first game start) */}
       <StartScreen />
-
     </div>
   )
 }

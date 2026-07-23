@@ -210,7 +210,7 @@ export function WeeklyReport() {
 
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-5 w-[560px] max-h-[92vh] flex flex-col">
+        <div className="pointer-events-auto bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-5 w-full max-w-[560px] mx-4 max-h-[92vh] flex flex-col">
 
           {/* Header */}
           <div className="text-xs font-mono uppercase tracking-widest text-gray-500 mb-3 border-b border-gray-800 pb-2 shrink-0">

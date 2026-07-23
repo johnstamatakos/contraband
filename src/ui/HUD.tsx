@@ -171,9 +171,10 @@ function InventoryStrip({
 
 interface HUDProps {
   displayTimeMs: number
+  isMobile?: boolean
 }
 
-export function HUD({ displayTimeMs }: HUDProps) {
+export function HUD({ displayTimeMs, isMobile = false }: HUDProps) {
   const { gameState, netWorth, isPaused, togglePause, gameSpeed, cycleSpeed, payDownHeat } = useGameStore()
   const { cash, reputation, globalHeat, turn, lastLayLowTurn, commodityPrices } = gameState
   const nw = netWorth()
@@ -184,6 +185,45 @@ export function HUD({ displayTimeMs }: HUDProps) {
   const layLowCost = CONFIG.layLow.costTiers.find(t => reputation >= t.minRep)!.cost
   const canLayLow = cash >= layLowCost && globalHeat > 0 &&
     turn - (lastLayLowTurn ?? 0) >= CONFIG.layLow.cooldownWeeks
+
+  // ── Mobile slim strip ─────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div className="flex items-center gap-3 px-3 py-2 bg-gray-900 border-b border-gray-700 shrink-0">
+        <GameClock
+          displayTimeMs={displayTimeMs}
+          isPaused={isPaused}
+          onTogglePause={togglePause}
+          gameSpeed={gameSpeed}
+          onCycleSpeed={cycleSpeed}
+        />
+        <div className="w-px h-6 bg-gray-700" />
+        <span className="text-sm font-bold font-mono text-emerald-400 shrink-0">${cash.toLocaleString()}</span>
+        <div className="flex-1 flex flex-col gap-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono text-gray-600 w-7">Rep</span>
+            <div className="flex-1 h-1.5 rounded-full bg-gray-700">
+              <div
+                className={`h-full rounded-full transition-all ${reputation >= 60 ? 'bg-blue-400' : reputation >= 30 ? 'bg-blue-500' : 'bg-red-500'}`}
+                style={{ width: `${reputation}%` }}
+              />
+            </div>
+            <span className="text-[10px] font-mono text-gray-500 w-6 text-right">{reputation}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono text-gray-600 w-7">Heat</span>
+            <div className="flex-1 h-1.5 rounded-full bg-gray-700">
+              <div
+                className={`h-full rounded-full transition-all ${globalHeat >= 60 ? 'bg-red-500' : globalHeat >= 30 ? 'bg-orange-400' : 'bg-orange-300'}`}
+                style={{ width: `${globalHeat}%` }}
+              />
+            </div>
+            <span className="text-[10px] font-mono text-gray-500 w-6 text-right">{globalHeat}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col bg-gray-900 border-b border-gray-700">
