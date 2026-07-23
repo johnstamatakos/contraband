@@ -10,7 +10,7 @@ import { DAY_MS } from '../engine/constants'
 import { getCityName } from '../data/cities'
 import { CONFIG } from '../engine/config'
 import { bumpStats, bumpCommoditySmuggled, peakStats } from './statsHelpers'
-import { createVehicleActions, resetVehicleCounter } from './vehicleActions'
+import { createVehicleActions, resetVehicleCounter, syncVehicleCounter } from './vehicleActions'
 import { createSmuggleActions } from './smuggleActions'
 import { createSkillActions } from './skillActions'
 
@@ -665,6 +665,7 @@ export const useGameStore = create<GameStore>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.savedTimeMs) setCurrentGameTimeMs(state.savedTimeMs)
+        if (state?.gameState?.fleet) syncVehicleCounter(state.gameState.fleet)
       },
     },
   ),

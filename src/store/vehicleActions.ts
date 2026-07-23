@@ -10,6 +10,17 @@ export function resetVehicleCounter(): void {
   vehicleCounter = 3
 }
 
+/** Call after rehydrating persisted state so new IDs never collide with saved ones. */
+export function syncVehicleCounter(fleet: Vehicle[]): void {
+  for (const v of fleet) {
+    const match = v.id.match(/_(\d+)$/)
+    if (match) {
+      const num = parseInt(match[1], 10)
+      if (num >= vehicleCounter) vehicleCounter = num + 1
+    }
+  }
+}
+
 export function createVehicleActions(
   get: () => { gameState: GameState },
   set: (updater: { gameState: GameState }) => void,
