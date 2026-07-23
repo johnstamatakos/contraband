@@ -18,6 +18,11 @@ export function InTransitCard({ contract, now, onOpen }: {
 
   const isMultiLeg = contract.legs.length > 1
 
+  // Live frozen route set — matches the same check used in useGameClock checkArrivals
+  const frozenRouteIds = new Set(
+    gameState.weatherEvents.filter(e => !e.isForecast).flatMap(e => e.affectedRouteIds),
+  )
+
   const legDisplays = contract.legs.map((leg, i) => {
     const isComplete = leg.completedAt !== null
     const activeShipments = gameState.shipmentsInTransit.filter(
@@ -35,6 +40,8 @@ export function InTransitCard({ contract, now, onOpen }: {
     let isFrozen = false
 
     if (firstShipment) {
+      // Use live weather events — shipment.isFrozen lags by one weekly tick
+      isFrozen = firstShipment.isFrozen || frozenRouteIds.has(firstShipment.routeId)
       const engineTier = primaryVehicle?.upgrades.engine ?? 0
       const engineMult = engineTier === 2 ? eu.tier2TransitMultiplier
         : engineTier === 1 ? eu.tier1TransitMultiplier : 1.0
@@ -42,12 +49,17 @@ export function InTransitCard({ contract, now, onOpen }: {
         + firstShipment.totalTurns * DAY_MS * skillSpeedMult * engineMult
         + firstShipment.frozenDurationMs
       const duration = arrivalMs - firstShipment.departureTimeMs
-      progress = duration > 0 ? Math.min(1, Math.max(0, (now - firstShipment.departureTimeMs) / duration)) : 1
+      // Cap progress at 99% while frozen so the bar doesn't show complete
+      const rawProgress = duration > 0 ? Math.min(1, Math.max(0, (now - firstShipment.departureTimeMs) / duration)) : 1
+      progress = isFrozen ? Math.min(rawProgress, 0.99) : rawProgress
       daysLeft = Math.max(0, Math.ceil((arrivalMs - now) / DAY_MS))
-      isFrozen = firstShipment.isFrozen
     }
 
-    return { leg, i, isComplete, firstShipment, primaryVehicle, progress, daysLeft, isFrozen }
+    const weatherEvent = firstShipment && isFrozen
+      ? gameState.weatherEvents.find(e => !e.isForecast && e.affectedRouteIds.includes(firstShipment.routeId))
+      : null
+
+    return { leg, i, isComplete, firstShipment, primaryVehicle, progress, daysLeft, isFrozen, weatherEvent }
   })
 
   return (
@@ -67,7 +79,7 @@ export function InTransitCard({ contract, now, onOpen }: {
         )}
       </div>
 
-      {legDisplays.map(({ leg, i, isComplete, firstShipment, primaryVehicle, progress, daysLeft, isFrozen }) => {
+      {legDisplays.map(({ leg, i, isComplete, firstShipment, primaryVehicle, progress, daysLeft, isFrozen, weatherEvent }) => {
         if (isComplete) return (
           <div key={i} className="space-y-1">
             {isMultiLeg && <div className="text-xs font-mono text-gray-600">Leg {i + 1}</div>}
@@ -84,7 +96,9 @@ export function InTransitCard({ contract, now, onOpen }: {
                 {isMultiLeg && <span className="text-gray-600 shrink-0">Leg {i + 1}</span>}
                 {primaryVehicle && <span className="truncate">{VEHICLE_ICON[primaryVehicle.type]} {primaryVehicle.name}</span>}
               </span>
-              {isFrozen ? <span className="text-amber-500 shrink-0">DELAYED</span> : <span className="text-gray-500 shrink-0">ETA {daysLeft}d</span>}
+              {isFrozen
+                ? <span className="text-amber-400 shrink-0">⛈ {weatherEvent ? weatherEvent.type.replace(/_/g, ' ') : 'weather delay'}</span>
+                : <span className="text-gray-500 shrink-0">ETA {daysLeft}d</span>}
             </div>
             <div className="h-1.5 rounded-full bg-gray-800 overflow-hidden">
               <div className={`h-full rounded-full ${isFrozen ? 'bg-amber-600' : 'bg-blue-600'}`} style={{ width: `${Math.round(progress * 100)}%` }} />
