@@ -51,15 +51,15 @@ export const SKILL_DEFS: SkillDef[] = [
     tier: 2,
     name: 'Express Routes',
     description: 'Optimised scheduling and priority handling gets your shipments moving faster.',
-    effectSummary: 'All transit times −10%',
+    effectSummary: 'All transit times −15%',
   },
   {
     id: 'logistics_3',
     branch: 'logistics',
     tier: 3,
-    name: 'Premium Cargo',
-    description: 'Black market clients pay top rates for difficult shipments. Your illicit operations command a premium.',
-    effectSummary: '+25% illicit payout',
+    name: 'Cargo Premium',
+    description: 'Your reputation for reliable delivery commands higher prices from buyers. Commodity sell prices are 20% higher on final delivery.',
+    effectSummary: '+20% commodity sell price',
   },
 
   // ── Network branch ───────────────────────────────────────────────────────────
@@ -67,16 +67,16 @@ export const SKILL_DEFS: SkillDef[] = [
     id: 'network_1',
     branch: 'network',
     tier: 1,
-    name: 'Black Market Access',
-    description: 'Word gets around in criminal circles. More illicit work finds its way onto your board.',
-    effectSummary: '+2 illicit contract slots',
+    name: 'Criminal Contacts',
+    description: 'An expanded network of fixers and middlemen keeps a steady stream of work coming your way. 4 additional contracts are always available on the board.',
+    effectSummary: '+4 contract board slots',
   },
   {
     id: 'network_2',
     branch: 'network',
     tier: 2,
     name: 'Street Intel',
-    description: "Paid informants within law enforcement keep you ahead of threats. Inspector and Interpol positions are revealed on the map. Also includes a 40% chance to avoid vehicle impound on Inspector busts.",
+    description: "Paid informants within law enforcement keep you ahead of threats. Inspector and Interpol positions are revealed on the map. Also includes a 40% chance to avoid vehicle impound on any bust.",
     effectSummary: 'Reveals threats on map · 40% impound avoidance',
   },
   {
@@ -85,7 +85,7 @@ export const SKILL_DEFS: SkillDef[] = [
     tier: 3,
     name: 'Heat Sink',
     description: 'Bribes, misdirection, and planted evidence redirect law enforcement attention away from your operations.',
-    effectSummary: 'Global heat decays +3/week',
+    effectSummary: 'Global heat decays +4/week',
   },
 ]
 

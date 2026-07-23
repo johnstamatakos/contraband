@@ -49,6 +49,7 @@ export function resolveSmuggleHopArrival(
   let updatedRoutes = state.routes
   let updatedFleet = [...state.fleet]
   let updatedRuns = state.smuggleRuns
+  let deliveredPayout = 0
 
   const route = state.routes.find(r => r.id === hop.routeId)
   const isIntlRoute = route !== undefined && INTERPOL_TIERS.has(route.tier)
@@ -155,7 +156,11 @@ export function resolveSmuggleHopArrival(
     }
 
     if (isLastHop) {
-      const payout = run.volume * run.sellPricePerUnit
+      const premiumMult = state.unlockedSkills.includes('logistics_3')
+        ? 1 + CONFIG.skills.effects.logistics_3.commodityPremiumBonus
+        : 1.0
+      const payout = Math.round(run.volume * run.sellPricePerUnit * premiumMult)
+      deliveredPayout = payout
       newCash += payout
       newGlobalHeat = Math.min(100, newGlobalHeat + CONFIG.smuggling.heatOnSuccess.globalHeatGain)
       newReputation = Math.min(100, newReputation + run.repReward)
@@ -229,7 +234,7 @@ export function resolveSmuggleHopArrival(
   const record: DeliveryRecord = {
     origin: getCityName(run.sourceCity),
     destination: getCityName(run.destinationCity),
-    payout: caught ? 0 : (isLastHop ? run.volume * run.sellPricePerUnit : 0),
+    payout: caught ? 0 : deliveredPayout,
     isIllicit: true, cargoType: commodityName, wasBust: caught,
     risk: prob, riskBreakdown: detection?.breakdown ?? null,
   }

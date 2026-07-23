@@ -219,7 +219,9 @@ export function generateContracts(state: GameState): Contract[] {
     cityBoardCount.set(c.destination, (cityBoardCount.get(c.destination) ?? 0) + 1)
   }
 
-  let toGenerate = Math.max(0, CONFIG.contracts.boardSize - currentUnassigned)
+  const effectiveBoardSize = CONFIG.contracts.boardSize +
+    (state.unlockedSkills.includes('network_1') ? CONFIG.skills.effects.network_1.boardBonus : 0)
+  let toGenerate = Math.max(0, effectiveBoardSize - currentUnassigned)
   if (toGenerate === 0) return []
 
   // ── Tier-aware seeding: ensure at least 1 legit contract per active tier ────

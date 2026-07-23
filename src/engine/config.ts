@@ -249,15 +249,15 @@ export const CONFIG = {
     },
     // Per-skill effect magnitudes — tune these without touching engine files
     effects: {
-      shadow_1:    { detectionReduction: 0.05 },          // Ghost Protocol: flat detection reduction
-      shadow_2:    { flaggedDurationReduction: 2 },          // Cover Your Tracks: weeks cut from flagged lockout after bust
-      shadow_3:    { threatBonusMultiplier: 0.50 },         // Counter-Intel: fraction of Inspector/Interpol bonus kept
-      logistics_1: { maintenanceMultiplier: 0.80 },         // Fleet Efficiency: fraction of base maintenance paid
-      logistics_2: { transitTimeMultiplier: 0.90 },         // Express Routes: fraction of base transit time
-      logistics_3: { illicitPayoutBonus: 0.25 },            // Premium Cargo: bonus multiplier on illicit delivery payout
-      network_1:   { illicitContractBonus: 2 },             // Black Market Access: extra illicit contract slots
-      network_2:   { impoundAvoidChance: 0.40 },            // Connections: chance to avoid vehicle impound on Inspector bust
-      network_3:   { globalHeatExtraDecay: 3 },            // Heat Sink: extra global heat removed per week
+      shadow_1:    { detectionReduction: 0.10 },          // Ghost Protocol: flat detection reduction
+      shadow_2:    { flaggedDurationReduction: 2 },        // Cover Your Tracks: weeks cut from flagged lockout after bust
+      shadow_3:    { threatBonusMultiplier: 0.50 },        // Counter-Intel: fraction of Inspector/Interpol bonus kept
+      logistics_1: { maintenanceMultiplier: 0.80 },        // Fleet Efficiency: fraction of base maintenance paid
+      logistics_2: { transitTimeMultiplier: 0.85 },        // Express Routes: fraction of base transit time
+      logistics_3: { commodityPremiumBonus: 0.20 },        // Cargo Premium: bonus multiplier on commodity sell price at final delivery
+      network_1:   { boardBonus: 4 },                      // Criminal Contacts: extra contracts always available on the board
+      network_2:   { impoundAvoidChance: 0.40 },           // Street Intel: chance to avoid vehicle impound on any bust
+      network_3:   { globalHeatExtraDecay: 4 },            // Heat Sink: extra global heat removed per week
     },
   },
 
