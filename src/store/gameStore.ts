@@ -84,7 +84,7 @@ function createInitialState(): GameState {
     turnsWithoutIllicitActivity: 0,
     pendingRouteEstablishments: [],
     lastWeeklySummary: null,
-    weeklyStats: { deliveryIncome: 0, contractsCompleted: 0, busts: 0, repFromDeliveries: 0, heatFromDeliveries: 0, deliveries: [] },
+    weeklyStats: { deliveryIncome: 0, contractsCompleted: 0, busts: 0, repFromDeliveries: 0, heatFromDeliveries: 0, deliveries: [], expenseBreakdown: {} },
     gameVersion: 0,
     unlockedSkills: [],
     profitHistory: [],
@@ -440,6 +440,13 @@ export const useGameStore = create<GameStore>()(
         routes: updatedRoutes,
         events: [...gameState.events, newEvent].slice(-50),
         lifetimeStats: bumpStats(gameState.lifetimeStats, { totalMoneySpent: cost, routesEstablished: 1 }),
+        weeklyStats: {
+          ...gameState.weeklyStats,
+          expenseBreakdown: {
+            ...gameState.weeklyStats.expenseBreakdown,
+            'Routes': (gameState.weeklyStats.expenseBreakdown['Routes'] ?? 0) + cost,
+          },
+        },
       },
     })
   },

@@ -480,6 +480,7 @@ export function resolveWeeklyTick(
       fromDeliveries: ws.repFromDeliveries,
       fromDecay: -repDecayAmount,
     },
+    expenseBreakdown: ws.expenseBreakdown ?? {},
     routesOpened:        current.routes
       .filter(r => r.status === 'open' && !openAtStart.has(r.id))
       .map(r => routeLabel(r.origin, r.destination)),
@@ -491,7 +492,7 @@ export function resolveWeeklyTick(
     ...current,
     // Rolling 52-week (1-year) profit history for the P&L chart
     profitHistory: [...(current.profitHistory ?? []), actualNetCashChange].slice(-52),
-    weeklyStats: { deliveryIncome: 0, contractsCompleted: 0, busts: 0, repFromDeliveries: 0, heatFromDeliveries: 0, deliveries: [] },
+    weeklyStats: { deliveryIncome: 0, contractsCompleted: 0, busts: 0, repFromDeliveries: 0, heatFromDeliveries: 0, deliveries: [], expenseBreakdown: {} },
     lastWeeklySummary: summary,
     cashAtPrevTickEnd: current.cash,
   }
@@ -508,6 +509,7 @@ function buildEmptySummary(weekNumber: number): WeeklySummary {
     deliveryIncome: 0, netCashChange: 0, repChange: 0, heatChange: 0,
     contractsCompleted: 0, busts: 0,
     repBreakdown: { fromDeliveries: 0, fromDecay: 0 },
+    expenseBreakdown: {},
     routesOpened: [], completedDeliveries: [], crackdown: null,
   }
 }

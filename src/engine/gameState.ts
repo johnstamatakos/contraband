@@ -232,6 +232,7 @@ export interface WeeklySummary {
   contractsCompleted: number
   busts: number
   repBreakdown: { fromDeliveries: number; fromDecay: number }
+  expenseBreakdown: Record<string, number>  // category label → total spent (for tooltip)
   routesOpened: string[]      // e.g. "Chicago → New York"
   completedDeliveries: DeliveryRecord[]
   crackdown: { triggered: boolean; raidedCities: CrackdownRaidResult[] } | null
@@ -246,6 +247,7 @@ export interface WeeklyStats {
   repFromDeliveries: number
   heatFromDeliveries: number
   deliveries: DeliveryRecord[]
+  expenseBreakdown: Record<string, number>  // category label → total spent
 }
 
 // ─── Commodity smuggling ─────────────────────────────────────────────────────
